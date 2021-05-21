@@ -4,7 +4,7 @@ import torch.nn as nn
 from collections import OrderedDict
 from torch.autograd import Variable
 from criterions.optim import Scheduler, Criterion, Optimizer, Metric
-from utils.validation import AU_metric, EXPR_metric, VA_metric, FA_metric
+from utils.validation import AU_metric, EXPR_metric, VA_metric, FA_metric, get_mean_sigma
 import os
 import numpy as np
 import torch.nn.functional as F
@@ -205,11 +205,11 @@ class ModelWrapper(object):
                 o = F.softmax(output['EXPR'].cpu(), dim=-1).argmax(-1).type(torch.LongTensor)
                 estimates['EXPR'] = o.numpy()
             elif task == 'VA':
-                v = F.softmax(output['VA'][:,:, 0].cpu(), dim=-1).numpy()
-                a = F.softmax(output['VA'][:,:, 1].cpu(), dim=-1).numpy()
-                estimates['VA'] = np.stack([v, a], axis = -1)
+                va_mean, va_sigma_square = get_mean_sigma(output['VA'])
+                estimates['VA'] = va_mean.cpu().numpy()
+                estimates['VA_sigma_square'] = va_sigma_square.cpu().numpy()
             elif task == 'FA':
-                estimates['FA'] = output['FA'][:, :, :].cpu().numpy()
+                estimates['FA'] = output['FA'].cpu().numpy()
         return estimates
     def optimize_parameters(self, FA_teacher = None):
         train_dict = dict()
