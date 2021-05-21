@@ -56,10 +56,10 @@ parser.add_argument('--load_epoch', type=int, default=-1,
 parser.add_argument('--lr', type=float, default=1e-3, 
     help= "The initial learning rate")
 parser.add_argument('--lr_policy', type=str, default='step', choices=['step', 'cosine'])
-parser.add_argument('--lr_decay_epochs', type=int, default=3, help='reduce the lr to 0.1*lr for every # epochs')
+parser.add_argument('--lr_decay_epochs', type=int, default=10, help='reduce the lr to 0.1*lr for every # epochs')
 parser.add_argument('--T_max', type=int, default=10000, help='the period for the cosine annealing (# iterations)')
 parser.add_argument('--weight_decay', type=float, default=0., help='weight decay')
-parser.add_argument('--nepochs', type=int, default=10)
+parser.add_argument('--nepochs', type=int, default=36)
 parser.add_argument('--optimizer', type=str, default='Adam')
 parser.add_argument('--gpu_ids', type=str, default='0', nargs='+',
     help='gpu ids: e.g. 0 , 0 1 2. use -1 for CPU')
