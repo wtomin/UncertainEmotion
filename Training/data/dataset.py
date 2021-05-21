@@ -101,9 +101,7 @@ class DatasetBase(data.Dataset):
         print("Loading video frames to dataset...")
         for video in tqdm(self._data.keys(), total = len(self._data.keys())):
             data = self._data[video]
-            N_offset = fps
-            if N_offset == 30:
-                N_offset = 1 # do not sample with offsets when fps =30
+            N_offset = stride # if stride=1, no offset. 
             for offset in range(N_offset):
                 sampled_frames = copy(data.iloc[offset:].iloc[::stride]).reset_index()
                 for i in range(len(sampled_frames)//N):
