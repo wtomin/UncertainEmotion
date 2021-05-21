@@ -119,7 +119,7 @@ class Trainer:
         self._train()
         self.writer.close()
     def _train(self):
-        self._total_steps = args.load_epoch * len(self.training_dataloaders) * args.batch_size
+        self._total_steps = args.load_epoch * len(self.training_dataloaders) 
         self._last_save_time = time.time()
         self._last_print_time = time.time()
         self._current_val_acc = 0.
@@ -161,7 +161,7 @@ class Trainer:
             self._model.optimize_parameters(FA_teacher=FA_teacher)
 
             # update epoch info
-            self._total_steps += args.batch_size
+            self._total_steps += 1
 
             if args.lr_policy == 'cosine':
                 self._model._LR_scheduler.step()
@@ -252,8 +252,8 @@ class Trainer:
                 name0, name1 = 'F1', 'Acc'
             else:
                 name0, name1 = 'Valence_CCC', 'Arousal_CCC'
-            self.writer.add_scalar(save_dir+'/'+name0, eval_per_task[task][0][0])
-            self.writer.add_scalar(save_dir+'/'+name1, eval_per_task[task][0][1])
+            self.writer.add_scalar(save_dir+'/'+name0, eval_per_task[task][0][0], i_epoch)
+            self.writer.add_scalar(save_dir+'/'+name1, eval_per_task[task][0][1], i_epoch)
         
         return sum([eval_per_task[k][1] for k in eval_per_task])
 
