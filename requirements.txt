@@ -1,4 +1,4 @@
-torch==1.8.1
+torch==1.7.1
 torchvision==0.8.2
 tensorboard==2.5.0
 pillow==7.2.0
