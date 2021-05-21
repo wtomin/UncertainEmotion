@@ -46,9 +46,9 @@ parser.add_argument('--auxillary', action='store_true', help=
 ########## temporal model definition #########
 parser.add_argument('--nhead', type=int, default=2,
                     help='the number of heads in the encoder/decoder of the transformer model')
-parser.add_argument('--nhid', type=int, default=200,
+parser.add_argument('--nhid', type=int, default=128,
                     help='number of hidden units per layer')
-parser.add_argument('--nlayers', type=int, default=2,
+parser.add_argument('--nlayers', type=int, default=1,
                     help='number of layers in the temporal model')
 ########## Training setup ############
 parser.add_argument('--load_epoch', type=int, default=-1, 
@@ -92,6 +92,8 @@ class Trainer:
             dropout = 0.5,
             uncertainty=True,
             pretrained=True)
+        model = self._model._model
+        print("number of parameters: {}".format(sum(p.numel() for p in model.parameters())))
         self.training_dataloaders = Multitask_DatasetDataLoader(train_mode = 'Train', 
             num_threads = args.n_threads_train, dataset_names=args.dataset_names,
             tasks = args.tasks, batch_size = args.batch_size, seq_len = args.seq_len, fps = args.fps,

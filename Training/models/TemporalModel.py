@@ -2,12 +2,15 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from models.mobilefacenet import GDC 
 # https://github.com/pytorch/examples/blob/01539f9eada34aef67ae7b3d674f30634c35f468/word_language_model/model.py
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
 
     def __init__(self, rnn_type, ninp, nhid, nlayers, nout, dropout=0.5):
         super(RNNModel, self).__init__()
+        self.GDC = GDC(ninp)
+        self.prelu = nn.PReLU(ninp)
         self.dropout = nn.Dropout(dropout)
         self.model_type = rnn_type
         if rnn_type in ['LSTM', 'GRU']:
@@ -31,6 +34,7 @@ class RNNModel(nn.Module):
         nn.init.uniform_(self.decoder.weight, -initrange, initrange)
 
     def forward(self, input, hidden = None):
+        input = self.prelu(self.GDC(input))
         output, hidden = self.rnn(input, hidden)
         output = self.dropout(output)
         decoded = self.decoder(output)
@@ -100,6 +104,8 @@ class TransformerModel(nn.Module):
             raise ImportError('TransformerEncoder module does not exist in PyTorch 1.1 or lower.')
         self.model_type = 'Transformer'
         self.src_mask = None
+        self.GDC = GDC(ninp)
+        self.prelu = nn.PReLU(ninp)
         self.pos_encoder = PositionalEncoding(ninp, dropout)
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
@@ -120,6 +126,7 @@ class TransformerModel(nn.Module):
         nn.init.uniform_(self.decoder.weight, -initrange, initrange)
 
     def forward(self, src, has_mask=True):
+        src = self.prelu(self.GDC(src))
         if has_mask:
             device = src.device
             if self.src_mask is None or self.src_mask.size(0) != len(src):

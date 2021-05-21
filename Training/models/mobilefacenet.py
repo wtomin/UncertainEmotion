@@ -145,8 +145,9 @@ class MobileFaceNet(Module):
         if self.output_name == 'GNAP':
             print("No need to remove for GNAP.")
         else:
-            self.output_layer.linear = Identity()
-            self.output_layer.bn = Identity()
+            self.output_layer = Identity()
+            # self.output_layer.linear = Identity()
+            # self.output_layer.bn = Identity()
     def forward(self, x):
         out = self.conv1(x)
 

@@ -15,7 +15,7 @@ class ModelsFactory:
         pretrained = True):
         bk = mobile_facenet(pretrained, args.cuda)
         bk.remove_output_layer()
-        ninp = 512 # 512 is the feature dimension
+        ninp = 256 # 256 is the feature dimension for each task, produced by GDC module
 
         temporal_models = {}
         for t in args.tasks:
