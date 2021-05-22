@@ -6,14 +6,14 @@ import time
 import os
 import torch.nn as nn
 from typing import Type, Any, Callable, Union, List, Optional
-from utils.validation import NLL, Accuracy, MSE, MAE, NLL_Regression, KLD_Regression
+from utils.validation import NLL, Accuracy, MSE, MAE, NLL_Regression, KLD_Regression, CCCLoss
 from utils.misc import rename
 __all__ = ['Optimizer', 'Scheduler', 'Criterion', 'Metric']
 
 class Optimizer:
     def __init__(self):
         pass
-    @classmethod
+    
     def get(
         self,
         model: nn.Module,
@@ -52,7 +52,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 class Scheduler:
     def __init__(self):
         pass
-    @classmethod
+    
     def get(
         self,
         lr_scheduler: str,
@@ -84,7 +84,7 @@ class Scheduler:
 class Criterion:
     def __init__(self):
         pass
-    @classmethod
+    
     def get(
         self,
         loss: str,
@@ -93,37 +93,62 @@ class Criterion:
         weight: Optional[torch.Tensor] = None,
         pos_weight: Optional[torch.Tensor] = None, # only for BCE loss
         ): 
+        self.num_classes = num_classes
+        self.reduction = reduction
+        self.weight = weight
+        self.pos_weight = pos_weight
+        self.loss_name = loss
         loss_name = loss
-        if loss.lower() in ['ce', 'bce', 'mse', 'l1', 'l1_loss']:
+        if '+' in loss_name:
+            loss_name = loss_name.split('+')
+        else:
+            loss_name = [loss_name]
+        loss_funcs = []
+        for single_loss in loss_name:
+            loss_func = self.get_single_loss(single_loss)
+            loss_funcs.append(loss_func)
+        @rename(self.loss_name)
+        def combine_losses(pred, target):
+            loss = 0
+            for loss_func in loss_funcs:
+                loss += loss_func(pred, target)
+            return loss
+        return combine_losses
+
+    def get_single_loss(self, loss):
+        if loss.lower() in ['ce', 'bce', 'mse', 'l1', 'l1_loss', 'ccc', 'negative_ccc']:
             if loss.lower() == 'ce':
-                loss = nn.CrossEntropyLoss(reduction = reduction, weight = weight)
+                loss_func = nn.CrossEntropyLoss(reduction = self.reduction, weight = self.weight)
             elif loss.lower() == 'bce':
-                loss = nn.BCEWithLogitsLoss(reduction = reduction, 
-                    weight = weight, 
-                    pos_weight = pos_weight)
+                loss_func = nn.BCEWithLogitsLoss(reduction = self.reduction, 
+                    weight = self.weight, 
+                    pos_weight = self.pos_weight)
             elif loss.lower() == 'mse':
-                loss = nn.MSELoss(reduction = reduction)
+                loss_func = nn.MSELoss(reduction = self.reduction)
             elif loss.lower() == 'l1' or loss.lower() == 'l1_loss':
-                loss = nn.L1Loss(reduction = reduction)
+                loss_func = nn.L1Loss(reduction = self.reduction)
+            elif loss.lower() == 'ccc' or loss.lower() == 'negative_ccc':
+                def VA_losses(pred, target):
+                    return CCCLoss()(pred[..., 0], target[..., 0]) + CCCLoss()(pred[..., 1], target[..., 1])
+                loss_func = VA_losses
             # function wrapper to get the first num_classes from pred
-            @rename(loss_name)
+            @rename(loss)
             def inner_func(pred, target):
-                pred = pred[..., :num_classes]
-                return loss(pred, target)
+                pred = pred[..., :self.num_classes]
+                return loss_func(pred, target)
             return inner_func
         else:
             if loss.lower() == 'nll_reg' or loss.lower() == 'nll_regression':
-                loss = NLL_Regression(num_classes = num_classes, reduction = reduction)
+                loss_func = NLL_Regression(num_classes = self.num_classes, reduction = self.reduction)
             elif loss.lower() == 'kld_reg' or loss.lower() == 'kld_regression':
-                loss = KLD_Regression(num_classes = num_classes, reduction = reduction)
+                loss_func = KLD_Regression(num_classes = self.num_classes, reduction = self.reduction)
             else:
                 raise ValueError("loss {} not supported".format(loss))
-            return loss
-
+            return loss_func
 class Metric:
     def __init__(self):
         pass 
-    @classmethod
+    
     def get(
         self,
         metric: str,
