@@ -43,12 +43,12 @@ class CCCLoss(nn.Module):
         x = x.view(-1)
         vx = x - torch.mean(x) 
         vy = y - torch.mean(y) 
-        rho =  torch.sum(vx * vy) / (torch.sqrt(torch.sum(torch.pow(vx, 2))) * torch.sqrt(torch.sum(torch.pow(vy, 2))))
+        rho =  torch.sum(vx * vy) / (torch.sqrt(torch.sum(torch.pow(vx, 2))) * torch.sqrt(torch.sum(torch.pow(vy, 2))) + EPS)
         x_m = torch.mean(x)
         y_m = torch.mean(y)
         x_s = torch.std(x)
         y_s = torch.std(y)
-        ccc = 2*rho*x_s*y_s/(torch.pow(x_s, 2) + torch.pow(y_s, 2) + torch.pow(x_m - y_m, 2))
+        ccc = 2*rho*x_s*y_s/(torch.pow(x_s, 2) + torch.pow(y_s, 2) + torch.pow(x_m - y_m, 2) + EPS)
         return 1-ccc
 def VA_metric(x, y):
     items = [CCC_score(x[:,0], y[:,0]), CCC_score(x[:,1], y[:,1])]
