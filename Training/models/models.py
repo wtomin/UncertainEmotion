@@ -205,9 +205,12 @@ class ModelWrapper(object):
                 o = F.softmax(output['EXPR'].cpu(), dim=-1).argmax(-1).type(torch.LongTensor)
                 estimates['EXPR'] = o.numpy()
             elif task == 'VA':
-                va_mean, va_sigma_square = get_mean_sigma(output['VA'])
-                estimates['VA'] = va_mean.cpu().numpy()
-                estimates['VA_sigma_square'] = va_sigma_square.cpu().numpy()
+                if self.uncertainty:
+                    va_mean, va_sigma_square = get_mean_sigma(output['VA'])
+                    estimates['VA'] = va_mean.cpu().numpy()
+                    estimates['VA_sigma_square'] = va_sigma_square.cpu().numpy()
+                else:
+                    estimates['VA'] = output['VA'].cpu().numpy()
             elif task == 'FA':
                 estimates['FA'] = output['FA'].cpu().numpy()
         return estimates
