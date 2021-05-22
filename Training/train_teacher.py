@@ -199,6 +199,7 @@ class Trainer:
         tasks = copy(args.tasks)
         if 'FA' in tasks:
             tasks.remove('FA')
+            eval_per_task['FA'] = []
         for task in tasks:
             track_val_preds = {'preds':[]}
             track_val_labels = {'labels':[]}
@@ -236,6 +237,7 @@ class Trainer:
                 now_time, i_epoch, self._total_steps, val_errors['loss_{}'.format(task)], eval_items[0], eval_items[1])
             if 'FA' in args.tasks:
                 output += " auxillary task FA loss: {:.4f}".format(val_errors['loss_FA'])
+                eval_per_task['FA'].append(val_errors['loss_FA'])
             print(output)
             eval_per_task[task] = [eval_items, eval_res]
 
@@ -247,8 +249,7 @@ class Trainer:
         # set model back to train
         self._model.set_train()
 
-        #self.save_validation_res_to_visual_dict(eval_per_task)
-        for task in self.tasks:
+        for task in args.tasks:
             save_dir = 'Val_{}'.format(task)
             if task != 'FA':
                 if task == 'AU' or task == 'EXPR':
@@ -258,7 +259,7 @@ class Trainer:
                 self.writer.add_scalar(save_dir+'/'+name0, eval_per_task[task][0][0], i_epoch)
                 self.writer.add_scalar(save_dir+'/'+name1, eval_per_task[task][0][1], i_epoch)
             else:
-                self.writer.add_scalar(save_dir+'/'+'metric', eval_per_task[task][1], i_epoch)
+                self.writer.add_scalar(save_dir+'/'+'metric', np.mean(eval_per_task[task]), i_epoch)
         return sum([eval_per_task[k][1] for k in tasks]) # only consider the tasks except for the auxillary task
 
 if __name__ == "__main__":
