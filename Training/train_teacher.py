@@ -90,7 +90,7 @@ class Trainer:
         self._model = ModelsFactory.get_by_name(args,
             is_train= True,
             dropout = 0.5,
-            uncertainty=True,
+            uncertainty=False,
             pretrained=True)
         model = self._model._model
         print("number of parameters: {}".format(sum(p.numel() for p in model.parameters())))
