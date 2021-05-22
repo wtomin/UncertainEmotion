@@ -248,16 +248,18 @@ class Trainer:
         self._model.set_train()
 
         #self.save_validation_res_to_visual_dict(eval_per_task)
-        for task in tasks:
+        for task in self.tasks:
             save_dir = 'Val_{}'.format(task)
-            if task == 'AU' or task == 'EXPR':
-                name0, name1 = 'F1', 'Acc'
+            if task != 'FA':
+                if task == 'AU' or task == 'EXPR':
+                    name0, name1 = 'F1', 'Acc'
+                else:
+                    name0, name1 = 'Valence_CCC', 'Arousal_CCC'
+                self.writer.add_scalar(save_dir+'/'+name0, eval_per_task[task][0][0], i_epoch)
+                self.writer.add_scalar(save_dir+'/'+name1, eval_per_task[task][0][1], i_epoch)
             else:
-                name0, name1 = 'Valence_CCC', 'Arousal_CCC'
-            self.writer.add_scalar(save_dir+'/'+name0, eval_per_task[task][0][0], i_epoch)
-            self.writer.add_scalar(save_dir+'/'+name1, eval_per_task[task][0][1], i_epoch)
-        
-        return sum([eval_per_task[k][1] for k in eval_per_task])
+                self.writer.add_scalar(save_dir+'/'+'metric', eval_per_task[task][1], i_epoch)
+        return sum([eval_per_task[k][1] for k in tasks]) # only consider the tasks except for the auxillary task
 
 if __name__ == "__main__":
     trainer = Trainer()
