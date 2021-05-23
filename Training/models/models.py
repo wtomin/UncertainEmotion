@@ -113,6 +113,8 @@ class ModelWrapper(object):
         if 'FA' in self.tasks:
             input_tasks = copy(self.tasks)
             input_tasks.remove('FA')
+        else:
+            input_tasks = self.tasks
         self._input_image = OrderedDict([(task, self._Tensor(self.batch_size, self.seq_len, 3, self.image_size, self.image_size)) for task in input_tasks])  
         self._label = OrderedDict([(task, self._format_label_tensor(task)) for task in input_tasks])
     def _init_losses(self):
