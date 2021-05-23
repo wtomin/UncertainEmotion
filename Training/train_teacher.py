@@ -81,9 +81,10 @@ if args.auxillary:
     print("Training model with an auxillary task: face alignment.")
     args.tasks = args.tasks + ['FA']
     FA_teacher = mobile_facenet(pretrained=True, cuda=args.cuda)
+    FA_teacher.eval()
 else:
     FA_teacher = None
-FA_teacher.eval()
+
 class Trainer:
     def __init__(self):
         PRESET_VARS = PATH()
