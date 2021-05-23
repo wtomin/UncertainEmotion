@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser()
 ######### Losses #############
 parser.add_argument('--AU_criterion', type=str, default = 'bce')
 parser.add_argument('--EXPR_criterion', type=str, default = 'ce')
-parser.add_argument('--VA_criterion', type=str, default = 'ccc')
+parser.add_argument('--VA_criterion', type=str, default = 'cce+ccc')
 parser.add_argument('--FA_criterion', type=str, default= 'l1_loss')
 parser.add_argument('--lambda_AU', type=float, default=1)
 parser.add_argument('--lambda_EXPR', type=float, default=1)
@@ -90,7 +90,6 @@ class Trainer:
         self._model = ModelsFactory.get_by_name(args,
             is_train= True,
             dropout = 0.5,
-            uncertainty=False,
             pretrained=True)
         model = self._model._model
         print("number of parameters: {}".format(sum(p.numel() for p in model.parameters())))
@@ -177,8 +176,8 @@ class Trainer:
                     self.writer.add_scalar('Train/{}'.format(key), self._model.loss_dict[key], self._total_steps)
                     self.writer.add_scalar('Lr', self._model._optimizer.param_groups[0]['lr'], self._total_steps)
                 self._last_save_time = time.time()
-            # if i_train_batch == 100:
-            #     break
+            if i_train_batch == 100:
+                break
 
     def _display_terminal(self, iter_start_time, i_epoch, i_train_batch, num_batches):
         errors = self._model.get_current_errors()
@@ -221,8 +220,8 @@ class Trainer:
                 #store the predictions and labels
                 track_val_preds['preds'].append(outputs[task][task])
                 track_val_labels['labels'].append(wrapped_v_batch[task]['label'])
-                # if i_val_batch == 100:
-                #     break
+                if i_val_batch == 100:
+                    break
             # normalize errors
             for k in val_errors.keys():
                 val_errors[k] /= len(data_loader)

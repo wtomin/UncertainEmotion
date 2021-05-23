@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 import numpy as np
+from torch.autograd import Variable
 from sklearn.metrics import f1_score
 from typing import Type, Any, Callable, Union, List, Optional
 EPS =  1e-8
@@ -33,13 +34,39 @@ def CCC_score(x, y):
     y_s = np.std(y)
     ccc = 2*rho*x_s*y_s/(x_s**2 + y_s**2 + (x_m - y_m)**2)
     return ccc
-class CCCLoss(nn.Module):
-    def __init__(self ):
-        super(CCCLoss, self).__init__() 
+class Custom_CrossEntropyLoss(nn.Module):
+    def __init__(self, digitize_num = 20, range=[-1, 1]):
+        super(Custom_CrossEntropyLoss, self).__init__() 
+        self.digitize_num = digitize_num
+        self.range = range
+        assert self.digitize_num !=1
+        self.edges = np.linspace(*self.range, num= self.digitize_num+1)
     def forward(self, x, y): 
         # the target y is continuous value (BS, )
-        # the input x is either continuous value (BS, ) 
+        # the input x is  probability output(digitized)
         y = y.view(-1)
+        y_numpy = y.data.cpu().numpy()
+        y_dig = np.digitize(y_numpy, self.edges) - 1
+        y_dig[y_dig==self.digitize_num] = self.digitize_num -1
+        y = Variable(torch.LongTensor(y_dig))
+        if x.is_cuda:
+            y = y.cuda()
+        return F.cross_entropy(x, y)
+class CCCLoss(nn.Module):
+    def __init__(self, digitize_num=20, range=[-1, 1]):
+        super(CCCLoss, self).__init__() 
+        self.digitize_num =  digitize_num
+        self.range = range
+        if self.digitize_num !=0:
+            bins = np.linspace(*self.range, num= self.digitize_num)
+            self.bins = Variable(torch.as_tensor(bins, dtype = torch.float32).cuda()).view((1, -1))
+    def forward(self, x, y): 
+        # the target y is continuous value (BS, )
+        # the input x is either continuous value (BS, ) or probability output(digitized)
+        y = y.view(-1)
+        if self.digitize_num !=1:
+            x = F.softmax(x, dim=-1)
+            x = (self.bins * x).sum(-1) # expectation
         x = x.view(-1)
         vx = x - torch.mean(x) 
         vy = y - torch.mean(y) 
@@ -50,6 +77,7 @@ class CCCLoss(nn.Module):
         y_s = torch.std(y)
         ccc = 2*rho*x_s*y_s/(torch.pow(x_s, 2) + torch.pow(y_s, 2) + torch.pow(x_m - y_m, 2) + EPS)
         return 1-ccc
+
 def VA_metric(x, y):
     items = [CCC_score(x[:,0], y[:,0]), CCC_score(x[:,1], y[:,1])]
     return items, sum(items)

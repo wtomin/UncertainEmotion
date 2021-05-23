@@ -18,8 +18,7 @@ class ModelWrapper(object):
         AU_criterion, EXPR_criterion, VA_criterion, FA_criterion,
         lambda_AU, lambda_EXPR, lambda_VA, lambda_FA,
         is_train = True,
-        cuda = True,
-        uncertainty = True):
+        cuda = True,):
 
         self._name = name
         self._model = STModel
@@ -38,7 +37,6 @@ class ModelWrapper(object):
         self.optimizer = optimizer
         self.wd = wd
         self.cuda = cuda
-        self.uncertainty = uncertainty
         self._gpu_ids = gpu_ids
         self._save_dir = os.path.join(self.checkpoints_dir, self.name)
         self._Tensor = torch.cuda.FloatTensor if self.cuda else torch.Tensor
@@ -46,7 +44,7 @@ class ModelWrapper(object):
         #
         categories = PATH().Aff_wild2.categories
         self._output_size_per_task = {'AU': len(categories['AU']), 'EXPR': len(categories['EXPR']), 
-        'VA': len(categories['VA'])*2 if uncertainty else len(categories['VA']),
+        'VA': len(categories['VA'])*20 ,
         'FA': 68*2}
         self.categories = categories
 
@@ -120,7 +118,7 @@ class ModelWrapper(object):
         criterions = {}
         criterions['AU'] = Criterion().get(self._criterions_per_task['AU'], len(self.categories['AU']))
         criterions['EXPR'] = Criterion().get(self._criterions_per_task['EXPR'], len(self.categories['EXPR']))
-        criterions['VA'] = Criterion().get(self._criterions_per_task['VA'], len(self.categories['VA']))
+        criterions['VA'] = Criterion().get(self._criterions_per_task['VA'], len(self.categories['VA']) * 20)
         criterions['FA'] = Criterion().get(self._criterions_per_task['FA'], 68*2)
         self._criterions_per_task = criterions
 
@@ -205,12 +203,13 @@ class ModelWrapper(object):
                 o = F.softmax(output['EXPR'].cpu(), dim=-1).argmax(-1).type(torch.LongTensor)
                 estimates['EXPR'] = o.numpy()
             elif task == 'VA':
-                if self.uncertainty:
-                    va_mean, va_sigma_square = get_mean_sigma(output['VA'])
-                    estimates['VA'] = va_mean.cpu().numpy()
-                    estimates['VA_sigma_square'] = va_sigma_square.cpu().numpy()
-                else:
-                    estimates['VA'] = output['VA'].cpu().numpy()
+                N = 20
+                v = F.softmax(output['VA'][:,:, :N].cpu(), dim=-1).numpy()
+                a = F.softmax(output['VA'][:,:, N:].cpu(), dim=-1).numpy()
+                bins = np.linspace(-1, 1, num=N)
+                v = (bins * v).sum(-1)
+                a = (bins * a).sum(-1)
+                estimates['VA'] = np.stack([v, a], axis = -1)
             elif task == 'FA':
                 estimates['FA'] = output['FA'].cpu().numpy()
         return estimates
