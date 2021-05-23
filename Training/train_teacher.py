@@ -176,8 +176,8 @@ class Trainer:
                     self.writer.add_scalar('Train/{}'.format(key), self._model.loss_dict[key], self._total_steps)
                     self.writer.add_scalar('Lr', self._model._optimizer.param_groups[0]['lr'], self._total_steps)
                 self._last_save_time = time.time()
-            if i_train_batch == 100:
-                break
+            # if i_train_batch == 100:
+            #     break
 
     def _display_terminal(self, iter_start_time, i_epoch, i_train_batch, num_batches):
         errors = self._model.get_current_errors()
@@ -220,8 +220,8 @@ class Trainer:
                 #store the predictions and labels
                 track_val_preds['preds'].append(outputs[task][task])
                 track_val_labels['labels'].append(wrapped_v_batch[task]['label'])
-                if i_val_batch == 100:
-                    break
+                # if i_val_batch == 100:
+                #     break
             # normalize errors
             for k in val_errors.keys():
                 val_errors[k] /= len(data_loader)
