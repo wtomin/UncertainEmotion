@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser()
 ######### Losses #############
 parser.add_argument('--AU_criterion', type=str, default = 'bce')
 parser.add_argument('--EXPR_criterion', type=str, default = 'ce')
-parser.add_argument('--VA_criterion', type=str, default = 'nll_reg')
+parser.add_argument('--VA_criterion', type=str, default = 'ccc')
 parser.add_argument('--FA_criterion', type=str, default= 'l1_loss')
 parser.add_argument('--lambda_AU', type=float, default=1)
 parser.add_argument('--lambda_EXPR', type=float, default=1)
@@ -32,7 +32,7 @@ parser.add_argument('--lambda_FA', type=float, default=1)
 parser.add_argument('--dataset_names', type=str, default = ['Mixed_EXPR','Mixed_AU','Mixed_VA'],nargs="+")
 parser.add_argument('--tasks', type=str, default = ['EXPR','AU','VA'],nargs="+")
 parser.add_argument('--seq_len', type=int, default= 30, help='length of input seq ')
-parser.add_argument('--fps', type=int, default=10, help=
+parser.add_argument('--fps', type=int, default=30, help=
     "Changing the fps to some integer smaller than 30 can change the sampling rate")
 parser.add_argument('--batch_size', type=int, default= 2, help='input batch size per task')
 parser.add_argument('--image_size', type=int, default= 112, help='input image size') 
