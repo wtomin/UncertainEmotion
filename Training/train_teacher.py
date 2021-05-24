@@ -102,7 +102,7 @@ class Trainer:
         self.training_dataloaders = self.training_dataloaders.load_multitask_train_data()
         self.validation_dataloaders = Multitask_DatasetDataLoader(
             train_mode = 'Validation', num_threads = args.n_threads_test, dataset_names=args.dataset_names,
-            tasks = args.tasks, batch_size = args.batch_size, seq_len = args.seq_len, fps = 30, # validation set always sample by 30 fps
+            tasks = args.tasks, batch_size = 1, seq_len = args.seq_len, fps = 30, # validation set always sample by 30 fps
             transform = test_transforms(args.image_size))
         self.validation_dataloaders = self.validation_dataloaders.load_multitask_val_test_data()
         
@@ -201,6 +201,8 @@ class Trainer:
         if 'FA' in tasks:
             tasks.remove('FA')
             eval_per_task['FA'] = []
+        hiddens = None
+        video_name = None
         for task in tasks:
             track_val_preds = {'preds':[]}
             track_val_labels = {'labels':[]}
@@ -208,10 +210,15 @@ class Trainer:
             data_loader = self.validation_dataloaders[task]
             for i_val_batch, val_batch in tqdm(enumerate(data_loader), total = len(data_loader)):
                 # evaluate model
+                if video_name is None:
+                    video_name = val_batch['video'][0]
+                else:
+                    if video_name != val_batch['video'][0]:
+                        hiddens = None
                 wrapped_v_batch = {task: val_batch}
                 self._model.set_input(wrapped_v_batch, input_tasks = [task])
-                outputs, errors = self._model.forward(return_estimates=True, 
-                    input_tasks = [task], FA_teacher=FA_teacher)
+                outputs, errors, hiddens = self._model.forward(return_estimates=True, 
+                    input_tasks = [task], FA_teacher=FA_teacher, hiddens=hiddens)
 
                 # store current batch errors
                 for k, v in errors.items():

@@ -32,6 +32,7 @@ class dataset_Mixed_VA(DatasetBase):
         labels = []
         img_paths = []
         frames_ids = []
+        video_names = []
         df = self.sample_seqs[index]
         for i, row in df.iterrows():
             img_path = row['path']
@@ -43,12 +44,15 @@ class dataset_Mixed_VA(DatasetBase):
             labels.append(label)
             img_paths.append(img_path)
             frames_ids.append(frame_id)
+            video_names.append(row['video'])
         # pack data
+        assert len(np.unique(video_names)) ==1, "the sequence must be sampled from the same video file"
         sample = {'image': torch.stack(images,dim=0),
                   'label': np.array(labels),
                   'path': img_paths,
                   'index': index,
-                  'id':frames_ids
+                  'id':frames_ids,
+                   'video': np.unique(video_names)[0],
                   }
-        # print (time.time() - start_time)
+
         return sample
