@@ -17,6 +17,27 @@ from torch.utils.tensorboard import SummaryWriter
 #################RuntimeError: received 0 items of ancdata ###########################
 import torch
 torch.multiprocessing.set_sharing_strategy("file_system")
+################# RuntimeError: unable to open shared memory object </torch_29841_2933458171> in read-write mode ############
+import sys
+import torch
+from torch.utils.data import dataloader
+from torch.multiprocessing import reductions
+from multiprocessing.reduction import ForkingPickler
+default_collate_func = dataloader.default_collate
+
+def default_collate_override(batch):
+    dataloader._use_shared_memory = False
+    return default_collate_func(batch)
+
+setattr(dataloader, 'default_collate', default_collate_override)
+
+for t in torch._storage_classes:
+  if sys.version_info[0] == 2:
+    if t in ForkingPickler.dispatch:
+        del ForkingPickler.dispatch[t]
+  else:
+    if t in ForkingPickler._extra_reducers:
+        del ForkingPickler._extra_reducers[t]
 #########################################################################
 parser = argparse.ArgumentParser()
 ######### Losses #############
