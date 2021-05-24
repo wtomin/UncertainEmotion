@@ -22,23 +22,28 @@ class SpatialTemporalModel(nn.Module):
 		self.backbone.cuda()
 		self.tmodels.cuda()
 
-	def forward(self, input_seq, hidden=None):
+	def forward(self, input_seq, hiddens=None):
 		bs, seq_len = input_seq.size(0), input_seq.size(1)
 		input_new = input_seq.view((bs * seq_len,)+ input_seq.size()[2:])
 		features = self.backbone(input_new)
 		features = features.view((bs, seq_len, -1))
 		outputs = {}
-		hiddens = {}
+		output_hiddens = {}
 		for i, t in enumerate(self.tasks):
 			if self.tmodels[i].model_type.lower() == 'transformer':
 			    outputs[t] = self.tmodels[i](features)
 			    hiddens[t] = None
 			else:
 				# rnn models will return initial state and hidden state
+				if hiddens is not None:
+					assert isinstance(hiddens, dict)
+					hidden = hiddens[t]
+				else:
+					hidden = None
 				out, hidden = self.tmodels[i](features, hidden)
 				outputs[t] = out
-				hiddens[t] = hidden
-		return outputs, hiddens
+				output_hiddens[t] = hidden
+		return outputs, output_hiddens
 
 
 

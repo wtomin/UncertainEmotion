@@ -101,6 +101,7 @@ class DatasetBase(data.Dataset):
         print("Loading video frames to dataset...")
         for video in tqdm(self._data.keys(), total = len(self._data.keys())):
             data = self._data[video]
+            data['video'] = [video] * len(data) # add the video name to dataframe
             N_offset = stride # if stride=1, no offset. 
             for offset in range(N_offset):
                 sampled_frames = copy(data.iloc[offset:].iloc[::stride]).reset_index()

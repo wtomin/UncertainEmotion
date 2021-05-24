@@ -154,7 +154,7 @@ class ModelWrapper(object):
         self._is_train = False
 
     def forward(self, return_estimates=False, input_tasks = None,
-        FA_teacher = None):
+        FA_teacher = None, hiddens = None):
         # validation the eval_task
         val_dict = dict() 
         out_dict = dict()
@@ -167,7 +167,7 @@ class ModelWrapper(object):
                 with torch.no_grad():
                     input_image = Variable(self._input_image[t])
                     label = Variable(self._label[t])
-                    output, _ = self._model(input_image)
+                    output, hiddens = self._model(input_image, hiddens)
                 criterion_task = self._criterions_per_task[t]
                 B, N, C  = output[t].size()
                 loss_task = criterion_task(output[t].view(B*N, C), label.view(B*N, -1).squeeze(-1)) 
@@ -194,7 +194,7 @@ class ModelWrapper(object):
             raise ValueError("Do not call forward function in training mode. USE optimize_parameters() INSTEAD.")
         if 'loss_FA' in val_dict:
             val_dict['loss_FA'] = sum(val_dict['loss_FA'])
-        return out_dict, val_dict
+        return out_dict, val_dict, hiddens
     def _format_estimates(self, output):
         estimates = {}
         for task in output.keys():
