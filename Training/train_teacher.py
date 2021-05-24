@@ -156,6 +156,7 @@ class Trainer:
             if args.lr_policy == 'step':
                 self._model._LR_scheduler.step()
             val_acc = self._validate(i_epoch)
+            self.writer.add_scalar("Val_metric", val_acc, i_epoch)
             if val_acc > self._current_val_acc:
                 print("validation acc improved, from {:.4f} to {:.4f}".format(self._current_val_acc, val_acc))
                 print('saving the model at the end of epoch %d, steps %d' % (i_epoch, self._total_steps))
