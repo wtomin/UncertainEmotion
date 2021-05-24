@@ -17,12 +17,33 @@ from torch.utils.tensorboard import SummaryWriter
 #################RuntimeError: received 0 items of ancdata ###########################
 import torch
 torch.multiprocessing.set_sharing_strategy("file_system")
+################# RuntimeError: unable to open shared memory object </torch_29841_2933458171> in read-write mode ############
+import sys
+import torch
+from torch.utils.data import dataloader
+from torch.multiprocessing import reductions
+from multiprocessing.reduction import ForkingPickler
+default_collate_func = dataloader.default_collate
+
+def default_collate_override(batch):
+    dataloader._use_shared_memory = False
+    return default_collate_func(batch)
+
+setattr(dataloader, 'default_collate', default_collate_override)
+
+for t in torch._storage_classes:
+  if sys.version_info[0] == 2:
+    if t in ForkingPickler.dispatch:
+        del ForkingPickler.dispatch[t]
+  else:
+    if t in ForkingPickler._extra_reducers:
+        del ForkingPickler._extra_reducers[t]
 #########################################################################
 parser = argparse.ArgumentParser()
 ######### Losses #############
 parser.add_argument('--AU_criterion', type=str, default = 'bce')
 parser.add_argument('--EXPR_criterion', type=str, default = 'ce')
-parser.add_argument('--VA_criterion', type=str, default = 'cce+ccc')
+parser.add_argument('--VA_criterion', type=str, default = 'ccc')
 parser.add_argument('--FA_criterion', type=str, default= 'l1_loss')
 parser.add_argument('--lambda_AU', type=float, default=1)
 parser.add_argument('--lambda_EXPR', type=float, default=1)
@@ -64,11 +85,11 @@ parser.add_argument('--optimizer', type=str, default='Adam')
 parser.add_argument('--gpu_ids', type=str, default='0', nargs='+',
     help='gpu ids: e.g. 0 , 0 1 2. use -1 for CPU')
 parser.add_argument('--cuda', action='store_true', help="Whether to use GPU")
-parser.add_argument('--print_freq_s', type=int, default= 5, help='print the training loss after every # seconds')
+parser.add_argument('--print_freq_s', type=int, default= 10, help='print the training loss after every # seconds')
 parser.add_argument('--save_freq_s', type=int, default= 10,
     help= 'save the training losses to the summary writer every # seconds.')
 parser.add_argument('--n_threads_train', default=8, type=int, help='# threads for loading data')
-parser.add_argument('--n_threads_test', default=8, type=int, help='# threads for loading data')
+parser.add_argument('--n_threads_test', default=2, type=int, help='# threads for loading data')
 parser.add_argument('--name', type=str, default='experiment_1', help='name of the experiment. It decides where to store samples and models')
 parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
 parser.add_argument('--loggings_dir', type=str, default='./loggings', help='loggings are saved here')
