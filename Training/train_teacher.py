@@ -64,11 +64,11 @@ parser.add_argument('--optimizer', type=str, default='Adam')
 parser.add_argument('--gpu_ids', type=str, default='0', nargs='+',
     help='gpu ids: e.g. 0 , 0 1 2. use -1 for CPU')
 parser.add_argument('--cuda', action='store_true', help="Whether to use GPU")
-parser.add_argument('--print_freq_s', type=int, default= 5, help='print the training loss after every # seconds')
+parser.add_argument('--print_freq_s', type=int, default=10, help='print the training loss after every # seconds')
 parser.add_argument('--save_freq_s', type=int, default= 10,
     help= 'save the training losses to the summary writer every # seconds.')
 parser.add_argument('--n_threads_train', default=8, type=int, help='# threads for loading data')
-parser.add_argument('--n_threads_test', default=8, type=int, help='# threads for loading data')
+parser.add_argument('--n_threads_test', default=2, type=int, help='# threads for loading data')
 parser.add_argument('--name', type=str, default='experiment_1', help='name of the experiment. It decides where to store samples and models')
 parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
 parser.add_argument('--loggings_dir', type=str, default='./loggings', help='loggings are saved here')
