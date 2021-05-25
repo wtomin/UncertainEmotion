@@ -145,7 +145,10 @@ class Trainer:
         self._total_steps = args.load_epoch * len(self.training_dataloaders) 
         self._last_save_time = time.time()
         self._last_print_time = time.time()
-        self._current_val_acc = 0.
+        self._current_val_acc = dict([(t, 0.) for t in args.tasks if t !='FA'] + [('FA', 1000)])
+        self._no_improve_n_epochs = dict([(t, 0) for t in args.tasks])
+        for t in args.tasks:
+            self.writer.add_scalar("Lambdas/{}".format(t), self._model.lambdas_per_task[t], 0)
 
         for i_epoch in range(args.load_epoch + 1, args.nepochs + 1):
             epoch_start_time = time.time()
@@ -155,13 +158,25 @@ class Trainer:
             self.training_dataloaders.reset()
             if args.lr_policy == 'step':
                 self._model._LR_scheduler.step()
-            val_acc = self._validate(i_epoch)
-            self.writer.add_scalar("Val_metric", val_acc, i_epoch)
-            if val_acc > self._current_val_acc:
-                print("validation acc improved, from {:.4f} to {:.4f}".format(self._current_val_acc, val_acc))
-                print('saving the model at the end of epoch %d, steps %d' % (i_epoch, self._total_steps))
-                #self._model.save(0) # only save the best on validation set
-                self._current_val_acc = val_acc
+            val_dict = self._validate(i_epoch)
+            val_acc = sum([val_dict[t] for t in args.tasks if t !='FA'])
+            cur_val_acc = sum([self._current_val_acc[t] for t in args.tasks if t !='FA'])
+            if val_acc > cur_val_acc:
+                print("validation acc improved, from {:.4f} to {:.4f}".format(cur_val_acc, val_acc))
+
+            for t in args.tasks:
+                metric = val_dict[t]
+                if (t!='FA' and metric> self._current_val_acc[t]) or (t =='FA' and metric < self._current_val_acc[t]):
+                    self._current_val_acc[t] = metric
+                    self._no_improve_n_epochs[t] = 0
+                else:
+                    self._no_improve_n_epochs[t] +=1
+
+            self._model.update_lambda(self._no_improve_n_epochs)
+            for t in args.tasks:
+                self.writer.add_scalar("Lambdas/{}".format(t), self._model.lambdas_per_task[t], i_epoch)
+            self.writer.add_scalar("Val_metric/total", val_acc, i_epoch)
+
             self._model.save(i_epoch) # save every epoch model
 
             # print epoch info
@@ -199,8 +214,8 @@ class Trainer:
                     self.writer.add_scalar('Train/{}'.format(key), self._model.loss_dict[key], self._total_steps)
                     self.writer.add_scalar('Lr', self._model._optimizer.param_groups[0]['lr'], self._total_steps)
                 self._last_save_time = time.time()
-            # if i_train_batch == 100:
-            #     break
+            if i_train_batch == 100:
+                break
 
     def _display_terminal(self, iter_start_time, i_epoch, i_train_batch, num_batches):
         errors = self._model.get_current_errors()
@@ -250,8 +265,8 @@ class Trainer:
                 #store the predictions and labels
                 track_val_preds['preds'].append(outputs[task][task])
                 track_val_labels['labels'].append(wrapped_v_batch[task]['label'])
-                # if i_val_batch == 100:
-                #     break
+                if i_val_batch == 100:
+                    break
             # normalize errors
             for k in val_errors.keys():
                 val_errors[k] /= len(data_loader)
@@ -289,7 +304,7 @@ class Trainer:
                 self.writer.add_scalar(save_dir+'/'+name1, eval_per_task[task][0][1], i_epoch)
             else:
                 self.writer.add_scalar(save_dir+'/'+'metric', np.mean(eval_per_task[task]), i_epoch)
-        return sum([eval_per_task[k][1] for k in tasks]) # only consider the tasks except for the auxillary task
+        return dict([(k, eval_per_task[k][1]) for k in args.tasks]) 
 
 if __name__ == "__main__":
     trainer = Trainer()

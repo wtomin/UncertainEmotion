@@ -50,10 +50,10 @@ class ModelWrapper(object):
 
         self._criterions_per_task = {'AU': AU_criterion, 
         'EXPR': EXPR_criterion, 'VA': VA_criterion, 'FA': FA_criterion}
-        self.lambdas_per_task = {'AU': lambda_AU, 'EXPR': lambda_EXPR, 
-        'VA': lambda_VA, 'FA': lambda_FA}
-        # self._metrics_per_task = {'AU': AU_metric, 'EXPR': EXPR_metric,
-        # 'VA':VA_metric, 'FA': FA_metric}
+        self.lambda_AU = lambda_AU
+        self.lambda_EXPR = lambda_EXPR
+        self.lambda_VA = lambda_VA
+        self.lambda_FA = lambda_FA
 
         # init train variables
         if self._is_train:
@@ -78,7 +78,22 @@ class ModelWrapper(object):
     @property
     def is_train(self):
         return self._is_train
+    @property
+    def lambdas_per_task(self):
+        lambda_dict =  {'AU': self.lambda_AU, 'EXPR': self.lambda_EXPR, 
+        'VA': self.lambda_VA, 'FA': self.lambda_FA}
+        return self.normalize_lambda(lambda_dict)
 
+    def update_lambda(self, no_improve_n_epochs):
+        for key in self.lambdas_per_task.keys():
+            n_epochs = no_improve_n_epochs[key]
+            assert isinstance(n_epochs, int), "number of epochs should be an integer"
+            if n_epochs > 1:
+                setattr(self, 'lambda_{}'.format(key), np.log2(n_epochs))
+    def normalize_lambda(self, lambda_dict):
+        summation = sum([lambda_dict[key] for key in lambda_dict.keys()])
+        return dict([(k, lambda_dict[k]/summation) for k in lambda_dict.keys()])
+    
     def load(self):
         load_epoch = self.load_epoch
         # load feature extractor
