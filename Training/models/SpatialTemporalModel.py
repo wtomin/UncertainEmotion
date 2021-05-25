@@ -32,7 +32,7 @@ class SpatialTemporalModel(nn.Module):
 		for i, t in enumerate(self.tasks):
 			if self.tmodels[i].model_type.lower() == 'transformer':
 			    outputs[t] = self.tmodels[i](features)
-			    hiddens[t] = None
+			    output_hiddens[t] = None
 			else:
 				# rnn models will return initial state and hidden state
 				if hiddens is not None:
