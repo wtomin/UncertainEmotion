@@ -82,7 +82,7 @@ class ModelWrapper(object):
     def lambdas_per_task(self):
         lambda_dict =  {'AU': self.lambda_AU, 'EXPR': self.lambda_EXPR, 
         'VA': self.lambda_VA, 'FA': self.lambda_FA}
-        return self.normalize_lambda(lambda_dict)
+        return lambda_dict
 
     def update_lambda(self, no_improve_n_epochs):
         for key in self.lambdas_per_task.keys():
@@ -187,7 +187,7 @@ class ModelWrapper(object):
                 B, N, C  = output[t].size()
                 loss_task = criterion_task(output[t].view(B*N, C), label.view(B*N, -1).squeeze(-1)) 
                 val_dict['loss_'+t] = loss_task.item()
-                loss += self.lambdas_per_task[t] * loss_task
+                loss += self.normalize_lambda(self.lambdas_per_task)[t] * loss_task
                 if FA_teacher is not None and 'FA' in self.tasks:
                     with torch.no_grad():
                         FA_label = FA_teacher(input_image.view((B*N, ) + input_image.size()[2:]))
@@ -196,7 +196,7 @@ class ModelWrapper(object):
                     if 'loss_FA' not in val_dict.keys():
                         val_dict['loss_FA'] = []
                     val_dict['loss_FA'].append(loss_FA.item() * (1/len(tasks)))
-                    loss += self.lambdas_per_task['FA'] * (1/len(tasks)) * loss_FA
+                    loss += self.normalize_lambda(self.lambdas_per_task)['FA'] * (1/len(tasks)) * loss_FA
 
                 if return_estimates:
                     for task in self.tasks:
@@ -245,7 +245,7 @@ class ModelWrapper(object):
                 B, N, C  = output[t].size()
                 loss_task = criterion_task(output[t].view(B*N, C), label.view(B*N, -1).squeeze(-1)) 
                 train_dict['loss_'+t] = loss_task.item()
-                loss += self.lambdas_per_task[t] * loss_task
+                loss += self.normalize_lambda(self.lambdas_per_task)[t] * loss_task
                 if FA_teacher is not None and 'FA' in self.tasks:
                     with torch.no_grad():
                         FA_label = FA_teacher(input_image.view((B*N,) + input_image.size()[2:]))
@@ -254,7 +254,7 @@ class ModelWrapper(object):
                     if 'loss_FA' not in train_dict.keys():
                         train_dict['loss_FA'] = []
                     train_dict['loss_FA'].append(loss_FA.item() * (1/len(tasks)))
-                    loss += self.lambdas_per_task['FA'] * (1/len(tasks)) * loss_FA
+                    loss += self.normalize_lambda(self.lambdas_per_task)['FA'] * (1/len(tasks)) * loss_FA
             train_dict['loss'] = loss.item()
             self._optimizer.zero_grad()
             loss.backward()
