@@ -25,7 +25,7 @@ class ModelsFactory:
             else:
                 dim = len(PATH().Aff_wild2.categories[t])*20 # digitize_num
             
-            if args.TModel.lower() == 'transformer':
+            if args.TModel == 'transformer':
                 temporal_models[t] = TransformerModel(ninp, args.nhead, args.nhid, args.nlayers, dim, dropout)
             else:
                 temporal_models[t] = RNNModel(args.TModel, ninp, args.nhid, args.nlayers, dim, dropout)
