@@ -85,7 +85,7 @@ class ModelWrapper(object):
         return lambda_dict
 
     def update_lambda(self, no_improve_n_epochs):
-        for key in self.lambdas_per_task.keys():
+        for key in no_improve_n_epochs.keys():
             n_epochs = no_improve_n_epochs[key]
             assert isinstance(n_epochs, int), "number of epochs should be an integer"
             if n_epochs > 1:
