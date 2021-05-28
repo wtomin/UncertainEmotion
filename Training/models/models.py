@@ -199,11 +199,9 @@ class ModelWrapper(object):
                     loss += self.normalize_lambda(self.lambdas_per_task)['FA'] * (1/len(tasks)) * loss_FA
 
                 if return_estimates:
-                    for task in self.tasks:
-                        out_dict[t] = self._format_estimates(output)
+                    out_dict[t] = self._format_estimates(output)
                 else:
-                    for task in self.tasks:
-                        out_dict[t] = dict([(key, output[key].cpu().numpy()) for key in output.keys()])
+                    out_dict[t] = dict([(key, output[key].cpu().numpy()) for key in output.keys()])
             val_dict['loss'] = loss.item()
         else:
             raise ValueError("Do not call forward function in training mode. USE optimize_parameters() INSTEAD.")
