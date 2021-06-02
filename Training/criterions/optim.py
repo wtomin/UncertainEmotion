@@ -20,7 +20,7 @@ class Optimizer:
         optimizer: str,
         lr: float,
         wd: float = 0.,
-        momentum: float = 0.,
+        momentum: float = 0.5,
         betas: List[float] = (0.9, 0.999)
         ): 
 

@@ -1,5 +1,5 @@
 import time
-import argparse
+from options.train_options import TrainOptions
 from data.custom_dataset_data_loader import Multitask_DatasetDataLoader
 from models import ModelsFactory
 from collections import OrderedDict
@@ -38,64 +38,63 @@ for t in torch._storage_classes:
   else:
     if t in ForkingPickler._extra_reducers:
         del ForkingPickler._extra_reducers[t]
-#########################################################################
-parser = argparse.ArgumentParser()
-######### Losses #############
-parser.add_argument('--AU_criterion', type=str, default = 'bce')
-parser.add_argument('--EXPR_criterion', type=str, default = 'ce')
-parser.add_argument('--VA_criterion', type=str, default = 'ccc')
-parser.add_argument('--FA_criterion', type=str, default= 'l1_loss')
-parser.add_argument('--lambda_AU', type=float, default=1)
-parser.add_argument('--lambda_EXPR', type=float, default=1)
-parser.add_argument('--lambda_VA', type=float, default=1)
-parser.add_argument('--lambda_FA', type=float, default=1)
-########## Data and tasks #########
-parser.add_argument('--dataset_names', type=str, default = ['Mixed_EXPR','Mixed_AU','Mixed_VA'],nargs="+")
-parser.add_argument('--tasks', type=str, default = ['EXPR','AU','VA'],nargs="+")
-parser.add_argument('--seq_len', type=int, default= 30, help='length of input seq ')
-parser.add_argument('--fps', type=int, default=30, help=
-    "Changing the fps to some integer smaller than 30 can change the sampling rate")
-parser.add_argument('--batch_size', type=int, default= 2, help='input batch size per task')
-parser.add_argument('--image_size', type=int, default= 112, help='input image size') 
-#parser.add_argument('--uncertainty', action='store_true', help='whether to predict uncertainty for emotion tasks.')
+# #########################################################################
+# parser = argparse.ArgumentParser()
+# ######### Losses #############
+# parser.add_argument('--AU_criterion', type=str, default = 'bce')
+# parser.add_argument('--EXPR_criterion', type=str, default = 'ce')
+# parser.add_argument('--VA_criterion', type=str, default = 'ccc')
+# parser.add_argument('--FA_criterion', type=str, default= 'l1_loss')
+# parser.add_argument('--lambda_AU', type=float, default=1)
+# parser.add_argument('--lambda_EXPR', type=float, default=1)
+# parser.add_argument('--lambda_VA', type=float, default=1)
+# parser.add_argument('--lambda_FA', type=float, default=1)
+# ########## Data and tasks #########
+# parser.add_argument('--dataset_names', type=str, default = ['Mixed_EXPR','Mixed_AU','Mixed_VA'],nargs="+")
+# parser.add_argument('--tasks', type=str, default = ['EXPR','AU','VA'],nargs="+")
+# parser.add_argument('--seq_len', type=int, default= 30, help='length of input seq ')
+# parser.add_argument('--fps', type=int, default=30, help=
+#     "Changing the fps to some integer smaller than 30 can change the sampling rate")
+# parser.add_argument('--batch_size', type=int, default= 2, help='input batch size per task')
+# parser.add_argument('--image_size', type=int, default= 112, help='input image size') 
+# #parser.add_argument('--uncertainty', action='store_true', help='whether to predict uncertainty for emotion tasks.')
 
-########### Ablation study: w/o auxillary task; Transformer or RNN #########
-parser.add_argument('--TModel', type=str, default='GRU',
-                    help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
-parser.add_argument('--auxillary', action='store_true', help=
-    "Whether to train face alignment as an auxillary task.")
-########## temporal model definition #########
-parser.add_argument('--nhead', type=int, default=2,
-                    help='the number of heads in the encoder/decoder of the transformer model')
-parser.add_argument('--nhid', type=int, default=128,
-                    help='number of hidden units per layer')
-parser.add_argument('--nlayers', type=int, default=1,
-                    help='number of layers in the temporal model')
-########## Training setup ############
-parser.add_argument('--load_epoch', type=int, default=-1, 
-    help='which epoch to load? set to -1 to use latest cached model')
-parser.add_argument('--lr', type=float, default=1e-3, 
-    help= "The initial learning rate")
-parser.add_argument('--lr_policy', type=str, default='step', choices=['step', 'cosine'])
-parser.add_argument('--lr_decay_epochs', type=int, default=3, help='reduce the lr to 0.1*lr for every # epochs')
-parser.add_argument('--T_max', type=int, default=20000, help='the period for the cosine annealing (# iterations)')
-parser.add_argument('--weight_decay', type=float, default=0., help='weight decay')
-parser.add_argument('--nepochs', type=int, default=10)
-parser.add_argument('--optimizer', type=str, default='Adam')
-parser.add_argument('--gpu_ids', type=str, default='0', nargs='+',
-    help='gpu ids: e.g. 0 , 0 1 2. use -1 for CPU')
-parser.add_argument('--cuda', action='store_true', help="Whether to use GPU")
-parser.add_argument('--print_freq_s', type=int, default= 10, help='print the training loss after every # seconds')
-parser.add_argument('--save_freq_s', type=int, default= 10,
-    help= 'save the training losses to the summary writer every # seconds.')
-parser.add_argument('--n_threads_train', default=8, type=int, help='# threads for loading data')
-parser.add_argument('--n_threads_test', default=2, type=int, help='# threads for loading data')
-parser.add_argument('--name', type=str, default='experiment_1', help='name of the experiment. It decides where to store samples and models')
-parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
-parser.add_argument('--loggings_dir', type=str, default='./loggings', help='loggings are saved here')
+# ########### Ablation study: w/o auxillary task; Transformer or RNN #########
+# parser.add_argument('--TModel', type=str, default='GRU',
+#                     help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
+# parser.add_argument('--auxillary', action='store_true', help=
+#     "Whether to train face alignment as an auxillary task.")
+# ########## temporal model definition #########
+# parser.add_argument('--nhead', type=int, default=2,
+#                     help='the number of heads in the encoder/decoder of the transformer model')
+# parser.add_argument('--nhid', type=int, default=128,
+#                     help='number of hidden units per layer')
+# parser.add_argument('--nlayers', type=int, default=1,
+#                     help='number of layers in the temporal model')
+# ########## Training setup ############
+# parser.add_argument('--load_epoch', type=int, default=-1, 
+#     help='which epoch to load? set to -1 to use latest cached model')
+# parser.add_argument('--lr', type=float, default=1e-3, 
+#     help= "The initial learning rate")
+# parser.add_argument('--lr_policy', type=str, default='step', choices=['step', 'cosine'])
+# parser.add_argument('--lr_decay_epochs', type=int, default=3, help='reduce the lr to 0.1*lr for every # epochs')
+# parser.add_argument('--T_max', type=int, default=20000, help='the period for the cosine annealing (# iterations)')
+# parser.add_argument('--weight_decay', type=float, default=0., help='weight decay')
+# parser.add_argument('--nepochs', type=int, default=10)
+# parser.add_argument('--optimizer', type=str, default='Adam')
+# parser.add_argument('--gpu_ids', type=str, default='0', nargs='+',
+#     help='gpu ids: e.g. 0 , 0 1 2. use -1 for CPU')
+# parser.add_argument('--cuda', action='store_true', help="Whether to use GPU")
+# parser.add_argument('--print_freq_s', type=int, default= 10, help='print the training loss after every # seconds')
+# parser.add_argument('--save_freq_s', type=int, default= 10,
+#     help= 'save the training losses to the summary writer every # seconds.')
+# parser.add_argument('--n_threads_train', default=8, type=int, help='# threads for loading data')
+# parser.add_argument('--n_threads_test', default=2, type=int, help='# threads for loading data')
+# parser.add_argument('--name', type=str, default='experiment_1', help='name of the experiment. It decides where to store samples and models')
+# parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
+# parser.add_argument('--loggings_dir', type=str, default='./loggings', help='loggings are saved here')
 
-args = parser.parse_args()
-prepare_arguments(args, is_train=True)
+args = TrainOptions().parse()
 
 if args.auxillary:
     from utils.misc import mobile_facenet

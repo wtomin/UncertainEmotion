@@ -9,6 +9,7 @@ import os
 import numpy as np
 import torch.nn.functional as F
 from copy import deepcopy, copy
+from utils import map_location
 
 class ModelWrapper(object):
     def __init__(self, STModel, name, tasks, checkpoints_dir, 
@@ -58,9 +59,10 @@ class ModelWrapper(object):
         # init train variables
         if self._is_train:
             self._model.train()
-            self._init_train_vars()
         else:
             self._model.eval()
+
+        self._init_train_vars()
 
         # load networks and optimizers
         if load_epoch > 0:
@@ -342,9 +344,7 @@ class ModelWrapper(object):
     def _load_network(self, network, network_label, epoch_label):
         load_filename = 'net_epoch_%s_%s.pth' % (epoch_label, network_label)
         load_path = os.path.join(self._save_dir, load_filename)
-        assert os.path.exists(
-            load_path), 'Weights file not found. Have you trained a model!? We are not providing one' % load_path
-        from ..utils import map_location
+        assert os.path.exists(load_path), 'Weights file %s not found ' % load_path
         checkpoint = torch.load(load_path, map_location = map_location(self.cuda))
         network.load_state_dict(checkpoint['state_dict'])
         print ('loaded net: %s' % load_path)
