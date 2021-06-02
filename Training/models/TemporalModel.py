@@ -23,7 +23,7 @@ class RNNModel(nn.Module):
                                  options are ['LSTM', 'GRU', 'RNN_TANH' or 'RNN_RELU']""")
             self.rnn = nn.RNN(ninp, nhid, nlayers, nonlinearity=nonlinearity, dropout=dropout)
         self.decoder = nn.Linear(nhid, nout)
-        self.init_weights()
+        #self.init_weights()
         self.rnn_type = rnn_type
         self.nhid = nhid
         self.nlayers = nlayers
