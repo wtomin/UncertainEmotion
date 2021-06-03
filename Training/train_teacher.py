@@ -65,7 +65,7 @@ class Trainer:
         self.training_dataloaders = self.training_dataloaders.load_multitask_train_data()
         self.validation_dataloaders = Multitask_DatasetDataLoader(
             train_mode = 'Validation', num_threads = args.n_threads_test, dataset_names=args.dataset_names,
-            tasks = args.tasks, batch_size = 1, seq_len = args.seq_len, fps = 30, # validation set always sample by 30 fps
+            tasks = args.tasks, batch_size = 1, seq_len = 64, fps = 30, # validation set always sample by 30 fps
             transform = test_transforms(args.image_size))
         self.validation_dataloaders = self.validation_dataloaders.load_multitask_val_test_data()
         
