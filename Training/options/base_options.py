@@ -127,7 +127,7 @@ class BaseOptions():
     def _save(self, args):
         expr_dir = os.path.join(self._opt.checkpoints_dir, self._opt.name)
         print(expr_dir)
-        if self.is_train:
+        if self.is_train and not os.path.exists(expr_dir):
             os.makedirs(expr_dir)
         else:
             assert os.path.exists(expr_dir)
