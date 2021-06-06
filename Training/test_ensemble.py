@@ -53,7 +53,7 @@ else:
 
 EPS = 1e-8
 PRESET_VARS = PATH()
-save_dir = 'ensemble_4'
+save_dir = 'ensemble_preds'
 class Tester(object):
     def __init__(self):
         self.save_dir = save_dir
@@ -142,7 +142,7 @@ class Tester(object):
                 frames_ids_record[i_model][task] = {}
                 for i_video, video in enumerate(task_data_file.keys()):
                     video_data = task_data_file[video]
-                    test_dataset = Test_dataset(args.seq_len, video_data, task,
+                    test_dataset = Test_dataset(64, video_data, task,
                         transform=test_transforms(args.image_size))
                     test_dataloader = torch.utils.data.DataLoader(
                     test_dataset,
@@ -169,14 +169,14 @@ class Tester(object):
                 preds = np.array(preds)
                 #assert frames_ids_record[0][task][video] == frames_ids_record[1][task][video]
                 video_frames_ids = frames_ids_record[0][task][video] 
-                if task == 'AU_Set':
+                if task == 'AU':
                     merged_preds = sigmoid(preds)
                     merged_preds = np.mean(merged_preds, axis=0) 
                     merged_preds = merged_preds > (np.ones_like(merged_preds)*0.5)
                     merged_preds = merged_preds.astype(np.int64)
                     save_path = '{}/{}/{}.txt'.format('merged', task, video)
                     self.save_to_file(video_frames_ids, merged_preds, save_path, task='AU')
-                elif task == 'EXPR_Set':
+                elif task == 'EXPR':
                     merged_preds = softmax(preds, axis=-1).mean(0).argmax(-1).astype(np.int).squeeze()
                     save_path = '{}/{}/{}.txt'.format('merged',task,  video)
                     self.save_to_file(video_frames_ids, merged_preds, save_path, task='EXPR')
