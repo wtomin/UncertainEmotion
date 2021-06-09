@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 18})
 from netcal.scaling import TemperatureScaling
 from netcal.metrics import ECE 
-from sklearn.metrics import roc_curve
 #################RuntimeError: received 0 items of ancdata ###########################
 import torch
 torch.multiprocessing.set_sharing_strategy("file_system")
@@ -234,7 +233,6 @@ class Validator(object):
         FA_labels = {}
         track_val_preds = {}
         track_val_labels = {}
-        AU_optimal_thresholds = []
         for task in tasks:
             track_val_preds[task] = {}
             track_val_labels[task] = {}
@@ -277,11 +275,7 @@ class Validator(object):
                 preds, labels = track_val_preds[task][i_model], track_val_labels[task][i_model]
                 B, N = preds.shape[:2]
                 metric_func = self._models[i_model].get_metrics_per_task()[task]
-                if task != 'AU':
-                    estimates = self._models[i_model]._format_estimates({task: torch.FloatTensor(track_val_preds[task][i_model])})
-                else:
-                    estimates, thresholds = self.AU_preds_to_estimates(preds, labels)
-                    AU_optimal_thresholds.append(thresholds)
+                estimates = self._models[i_model]._format_estimates({task: torch.FloatTensor(track_val_preds[task][i_model])})
                 eval_items, eval_res = metric_func(estimates[task].reshape(B*N, -1).squeeze(), copy(labels.reshape(B*N, -1).squeeze()))
                 print("Model {} {} eval res: {}, eval 0: {}, eval 1 {}".format(i_model, task, eval_res,
                     eval_items[0], eval_items[1]))
@@ -297,16 +291,12 @@ class Validator(object):
                 preds_total.append(preds)
 
             # evaluate ensemble model for task (average the output probabilities)
-            if task == 'AU':
-                for thresholds in AU_optimal_thresholds:
-                    print("AU thresholds:{}".format(thresholds))
-                AU_optimal_thresholds = np.stack(AU_optimal_thresholds, axis=0).mean(0)
             probas = []
             for preds in preds_total:
                 p = self.logits_2_probas(preds, task)
                 probas.append(p)
             probas = np.mean(np.stack(probas, axis=0), axis=0)
-            estimates = self.probas_2_estimates(probas, task, AU_optimal_thresholds if task=='AU' else None)
+            estimates = self.probas_2_estimates(probas, task)
             B, N = estimates.shape[:2]
             eval_items, eval_res = metric_func(estimates.reshape(B*N, -1).squeeze(), copy(labels.reshape(B*N, -1).squeeze()))
             print("Ensemble {} eval res: {}, eval 0: {}, eval 1 {}".format(task, eval_res,
@@ -330,20 +320,6 @@ class Validator(object):
         print("FA ensemble models:{}".format(record_metrics_ensemble['FA']))
         return [record_metrics_single, record_metrics_ensemble], [track_val_preds, track_val_labels]
 
-    def AU_preds_to_estimates(self, preds, labels):
-        probas = self.logits_2_probas(preds, task = 'AU')
-        C = probas.shape[-1]
-        optimal_thresholds = []
-        for i_c in range(C):
-            p = probas[..., i_c]
-            l = labels[..., i_c]
-            fpr, tpr , thresholds = roc_curve(l.reshape(-1,), p.reshape(-1,))
-            J = tpr -fpr
-            i = np.argmax(J)
-            optimal_thresholds.append(thresholds[i])
-        optimal_thresholds = np.array(optimal_thresholds)
-        estimates = (probas>optimal_thresholds).astype(np.int)
-        return {'AU': estimates}, optimal_thresholds
 
     def logits_2_probas(self, preds, task, T=1):
         preds = preds/T
@@ -355,14 +331,11 @@ class Validator(object):
             p = [softmax(preds[..., :20], axis=-1), softmax(preds[..., 20:], axis=-1)]
             p = np.concatenate(p, axis=-1)
         return p
-    def probas_2_estimates(self, probas, task, AU_thresholds= None):
+    def probas_2_estimates(self, probas, task):
         if task == 'EXPR':
             est = probas.argmax(axis=-1).astype(np.int)
         elif task =='AU':
-            if AU_thresholds is None:
-                est = (probas > 0.5).astype(np.int)
-            else:
-                est = (probas > AU_thresholds).astype(np.int)
+            est = (probas > 0.5).astype(np.int)
         elif task == 'VA':
             v, a = probas[..., :20], probas[..., 20:]
             bins = np.linspace(-1, 1, 20)
