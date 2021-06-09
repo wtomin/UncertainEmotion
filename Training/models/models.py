@@ -135,8 +135,14 @@ class ModelWrapper(object):
     def _init_losses(self):
         # get the training loss
         criterions = {}
-        criterions['AU'] = Criterion().get(self._criterions_per_task['AU'], len(self.categories['AU']))
-        criterions['EXPR'] = Criterion().get(self._criterions_per_task['EXPR'], len(self.categories['EXPR']))
+        pos_weight = torch.tensor([23/3, 47/3, 21/4, 37/13, 3/2, 13/7, 3, 97/3, 97/3, 97/3, 37/63, 23/2])
+        if self.cuda:
+            pos_weight = pos_weight.cuda()
+        criterions['AU'] = Criterion(pos_weight = pos_weight).get(self._criterions_per_task['AU'], len(self.categories['AU']))
+        weight = torch.tensor([2.5, 25, 40, 33, 4, 5.88, 12.5])
+        if self.cuda:
+            weight = weight.cuda()
+        criterions['EXPR'] = Criterion(weight = weight).get(self._criterions_per_task['EXPR'], len(self.categories['EXPR']))
         criterions['VA'] = Criterion().get(self._criterions_per_task['VA'], len(self.categories['VA']) * 20)
         criterions['FA'] = Criterion().get(self._criterions_per_task['FA'], 68*2)
         self._criterions_per_task = criterions
