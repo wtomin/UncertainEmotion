@@ -12,3 +12,4 @@ matplotlib==3.3.3
 pandas>=1.1
 opencv-python>=4.1
 seaborn==0.11.1
+netcal==1.1.3
