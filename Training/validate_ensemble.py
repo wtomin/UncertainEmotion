@@ -16,8 +16,9 @@ from utils.validation import sigmoid, softmax
 import matplotlib
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 18})
+from sklearn.metrics import brier_score_loss
 from netcal.scaling import TemperatureScaling
-from netcal.metrics import ECE 
+from utils.Miscalibration import _Miscalibration as miscalibration
 #################RuntimeError: received 0 items of ancdata ###########################
 import torch
 torch.multiprocessing.set_sharing_strategy("file_system")
@@ -90,33 +91,63 @@ class Validator(object):
             if task in self.validation_dataloaders.keys():
                 data_loader = self.validation_dataloaders[task]
                 print("{}: {} images".format(task, len(data_loader)*args.batch_size * args.seq_len))
-        save_file = 'N=5/val_res.pkl'
+        save_file = 'N=10_loss_reweight/val_res.pkl'
+        if not os.path.exists(os.path.dirname(save_file)):
+            os.makedirs(os.path.dirname(save_file))
         if not os.path.exists(save_file):
             [single_model_metrics, ensemble_metrics], [track_val_preds, track_val_labels] = self._validate_tasks_metrics()
             pickle.dump([[single_model_metrics, ensemble_metrics], [track_val_preds, track_val_labels]], open(save_file, 'wb'))
         else:
             [single_model_metrics, ensemble_metrics], [track_val_preds, track_val_labels] = pickle.load(open(save_file, 'rb'))
-        NLLs, NLLs_TS, ECEs, ECEs_TS = self._validate_uncertainty_metrics(track_val_preds, track_val_labels)
-        self._visualize_uncertainty_metrics(NLLs, NLLs_TS, ECEs, ECEs_TS)
+        NLLs, NLLs_TS, ECEs, ECEs_TS, BSs, BSs_TS = self._validate_uncertainty_metrics(track_val_preds, track_val_labels)
+        self._visualize_uncertainty_metrics(NLLs, NLLs_TS, "NLL")
+        self._visualize_uncertainty_metrics(ECEs, ECEs_TS, "ECE")
+        self._visualize_uncertainty_metrics(BSs, BSs_TS, "BrierScore")
         self._visualize_task_metrics(single_model_metrics, ensemble_metrics)
-    def _visualize_uncertainty_metrics(self, NLLs, NLLs_TS, ECEs, ECEs_TS):
-        fig, axes = plt.subplots(len(NLLs.keys()), 2)
-        for i, task in enumerate(NLLs.keys()):
-            data_nll = [ [NLLs[task][i_model] for i_model in NLLs_TS[task].keys()],
-                         [NLLs_TS[task][i_model] for i_model in NLLs_TS[task].keys()],
-                         [NLLs[task]['ens']]]
-            data_ece = [ [ECEs[task][i_model] for i_model in ECEs_TS[task].keys()],
-                         [ECEs_TS[task][i_model] for i_model in ECEs_TS[task].keys()],
-                         [ECEs[task]['ens']]]
-            axes[i][0].boxplot(data_nll, positions = np.arange(1, len(data_nll)+1), widths=0.25)
-            axes[i][1].boxplot(data_ece, positions = np.arange(1, len(data_ece)+1), widths=0.25)
-            axes[i][0].set_title("{}:{}".format(task, "NLL"))
-            axes[i][1].set_title("{}:{}".format(task, "ECE"))
-            axes[i][0].set_xticks(np.arange(1, len(data_nll)+1))
-            axes[i][1].set_xticks(np.arange(1, len(data_nll)+1))
-            axes[i][0].set_xticklabels(['Vanilla', 'TemperatureScaling', 'Deep Ensemble'])
-            axes[i][1].set_xticklabels(['Vanilla', 'TemperatureScaling', 'Deep Ensemble'])
-
+    def _visualize_uncertainty_metrics(self, metrics, metrcis_TS, title):
+        fig, axes = plt.subplots(len(metrics.keys()), 1)
+        for i, task in enumerate(metrics.keys()):
+            if not isinstance(metrics[task][0], tuple):
+                data = [[metrics[task][i_model] for i_model in metrcis_TS[task].keys()],
+                             [metrcis_TS[task][i_model] for i_model in metrcis_TS[task].keys()],
+                             [metrics[task]['ens']]]
+                ece = False
+            else:
+                data = [[metrics[task][i_model][0] for i_model in metrcis_TS[task].keys()],
+                             [metrcis_TS[task][i_model][0] for i_model in metrcis_TS[task].keys()],
+                             [metrics[task]['ens'][0]]]
+                ece = True
+            axes[i].boxplot(data, positions = np.arange(1, len(data)+1), widths=0.25)
+            axes[i].set_title("{}:{}".format(task, title))
+            axes[i].set_xticks(np.arange(1, len(data)+1))
+            axes[i].set_xticklabels(['Vanilla', 'TemperatureScaling', 'Deep Ensemble'])
+        plt.show()
+        if ece:
+            for i, task in enumerate(metrics.keys()):
+                # acc hist and conf hist
+                ece_score, acc_hist, conf_hist = metrics[task][2]
+                self.plot_ece(ece_score, acc_hist, conf_hist, title = "{} ECE: 1st Vanilla Single Model".format(task))
+                ece_score, acc_hist, conf_hist = metrcis_TS[task][2]
+                self.plot_ece(ece_score, acc_hist, conf_hist, title = "{} ECE: 1st TemperatureScaling Single Model".format(task))
+                ece_score, acc_hist, conf_hist = metrics[task]['ens']
+                self.plot_ece(ece_score, acc_hist, conf_hist, title = "{} ECE: Deep Ensemble".format(task))
+    def plot_ece(self, ece_score,acc_hist, conf_hist, title = ""):
+        assert len(acc_hist) == len(conf_hist)
+        plt.figure(figsize=(12, 12))
+        plt.xlabel("Confidence")
+        plt.ylabel("Accuracy")
+        plt.xlim([0, 1])
+        plt.ylim([0, 1])
+        plt.grid()
+        nbins = len(acc_hist)
+        x = np.linspace(0, 1, nbins+1)
+        x = 0.5*(x[:-1] + x[1:])
+        plt.bar(x, acc_hist, color = 'salmon', width=0.1,  alpha = 0.5, edgecolor='k', label='Acc')
+        plt.bar(x, conf_hist, color = 'blue',width=0.1,  alpha = 0.5, edgecolor='k', label='Conf')
+        plt.plot([0, 1], [0, 1], 'k--', alpha = 0.7)
+        plt.text(0.1, 0.65, "ECE={:.2f}%".format(ece_score*100))
+        plt.title(title)
+        plt.legend()
         plt.show()
 
     def _validate_uncertainty_metrics(self, track_val_preds, track_val_labels):
@@ -128,6 +159,8 @@ class Validator(object):
         NLLs = {}
         ECEs_TS = {}
         ECEs = {}
+        BSs_TS = {}
+        BSs = {}
         for task in tasks:
             preds_dict = track_val_preds[task]
             labels_dict = track_val_labels[task]
@@ -137,7 +170,9 @@ class Validator(object):
             NLLs_TS[task] = {}
             ECEs_TS[task] = {}
             ECEs[task] = {}
-            for i_model in preds_dict.keys():
+            BSs[task] = {}
+            BSs_TS[task] = {}
+            for i_model in tqdm(preds_dict.keys()):
                 preds, labels = preds_dict[i_model], labels_dict[i_model]
                 B, N = preds.shape[:2]
                 preds, labels = preds.reshape(B*N, -1).squeeze(), labels.reshape(B*N, -1).squeeze()
@@ -160,27 +195,80 @@ class Validator(object):
                 ECEs[task][i_model] = self.get_ECE(
                     copy(probas), 
                     copy(labels))
+                C = probas.shape[-1]
+                BSs_TS[task][i_model] = np.mean([
+                    brier_score_loss(y_true = self.to_onehot_labels(copy(labels[~mask]), task=task)[..., i_c],
+                    y_prob = self.logits_2_probas(copy(preds[~mask]), task, T = T)[..., i_c]) 
+                    for i_c in range(C)])
+                BSs[task][i_model] = np.mean([
+                    brier_score_loss(y_true=self.to_onehot_labels(copy(labels), task = task)[..., i_c],
+                    y_prob = copy(probas)[..., i_c]) for i_c in range(C)])
             probas_total = np.stack(probas_total, axis=0).mean(0)
             NLLs[task]['ens'] = self.get_NLL(probas_total, labels, task)
             ECEs[task]['ens'] = self.get_ECE(probas_total, labels)
+            BSs[task]['ens'] = np.mean([
+                brier_score_loss(y_true=self.to_onehot_labels(labels, task=task)[..., i_c],
+                y_prob = probas_total[..., i_c]) for i_c in range(C)])
         for task in optimal_Ts.keys():
             output = "Task: {}".format(task)
             output += " ".join(['{}: {}'.format(i_model, optimal_Ts[task][i_model]) for i_model in optimal_Ts[task].keys()])
             print(output)
-        return NLLs, NLLs_TS, ECEs, ECEs_TS
+        return NLLs, NLLs_TS, ECEs, ECEs_TS, BSs, BSs_TS
+    def to_onehot_labels(self, labels, num_classes = 7, task= 'EXPR'):
+        if task == 'EXPR':
+            onehot = np.zeros((len(labels),num_classes))
+            onehot[np.arange(len(labels)),labels] = 1
+        elif task == 'AU':
+            onehot = labels
+        return onehot
 
     def get_ECE(self, probas, labels, nbins= 10):
-        ece = ECE(bins = nbins)
+        ece = miscalibration(bins = nbins)
         if len(labels.shape) == 1:
-            ece_score = ece.measure(probas, labels)
+            ece_score, acc_hist, conf_hist = ece.measure(probas, labels, metric='ece', 
+                return_bins = True)
         else:
             N = labels.shape[1]
-            ece_score = []
-            for i in range(N):
-                p, l = probas[:, i], labels[:, i]
-                ece_score.append(ece.measure(p, l))
-            ece_score = np.mean(ece_score)
-        return ece_score
+            # ece_scores = []
+            # acc_scores = []
+            # conf_scores = []
+            probas = copy(probas).reshape(-1,)
+            labels = copy(labels).reshape(-1,)
+            # for i in range(N):
+            #     p, l = probas[:, i], labels[:, i]
+            #     ece_score, acc_hist, conf_hist = ece.measure(p, l, metric='ece', 
+            #     return_bins = True)
+            #     ece_scores.append(ece_score)
+            #     acc_scores.append(acc_hist)
+            #     conf_scores.append(conf_hist)
+
+            # ece_score = np.mean(ece_scores)
+            # acc_hist = np.mean(np.stack(acc_scores, axis=0), axis=0)
+            # conf_hist = np.mean(np.stack(conf_scores, axis=0), axis=0)
+            ece_score, acc_hist, conf_hist = ece.measure(probas, labels, metric='ece', 
+                return_bins = True)
+        return ece_score, acc_hist, conf_hist
+    # def get_ECE_AU(self, probas, labels, nbins=10, thresholds = [0.12, 0.06, 0.16, 0.26, 0.40, 0.35,
+    #     0.25, 0.03, 0.03, 0.03, 0.63, 0.08]):
+    #     N =  labels.shape[1]
+    #     ece_score = []
+    #     for i in range(N):
+    #         p, l, t = probas[:, i], labels[:, i], thresholds[i]
+    #         bins = np.linspace(0., 1., nbins +1)
+    #         p_index = np.digitize(p, bins) -1
+    #         p_index[p_index == len(bins)] = len(bins) - 1
+    #         bins_indexes = np.unique(p_index)
+    #         score = 0
+    #         for i_b in bins_indexes:
+    #             mask = p_index == i_b
+    #             preds = (p[mask] >t).astype(np.float)
+    #             acc = sum(preds == l[mask])/ len(preds)
+    #             avg_p = p[mask].mean()
+    #             diff = np.abs(avg_p - acc)
+    #             num = sum(mask)
+    #             score+= num/len(p_index) * diff
+    #         ece_score.append(score)
+    #     return np.mean(ece_score)
 
     def optimize_temperature(self, logits, labels, task):
         if task == 'EXPR':
