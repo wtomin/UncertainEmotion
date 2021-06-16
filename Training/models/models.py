@@ -4,7 +4,7 @@ import torch.nn as nn
 from collections import OrderedDict
 from torch.autograd import Variable
 from criterions.optim import Scheduler, Criterion, Optimizer, Metric
-from utils.validation import AU_metric, EXPR_metric, VA_metric, FA_metric, get_mean_sigma
+from utils.validation import AU_metric, EXPR_metric, VA_metric, FA_metric, get_mean_sigma, get_distillation_loss
 import os
 import numpy as np
 import torch.nn.functional as F
@@ -270,52 +270,69 @@ class ModelWrapper(object):
             self.loss_dict = train_dict
         else:
             raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
-    
-    # def optimize_parameters_kd(self, teacher_model): # knowledge distillation
-    #     train_dict = dict()
-    #     loss = 0.
-    #     loss_per_task = {'EXPR': 0, 'valence':0, 'arousal':0, 'AU':0}
-    #     if self._is_train:
-    #         for t in self._opt.tasks:
-    #             input_image = Variable(self._input_image[t])
-    #             output = self.resnet50_GRU(input_image)
-    #             label = Variable(self._label[t])
-    #             with torch.no_grad():
-    #                 teacher_preds = teacher_model.resnet50_GRU(input_image)
-    #             for task in self._opt.tasks:
-    #                 distillation_task = self._criterions_per_task[task].get_distillation_loss()
-    #                 B, N, C  = output['output'][task].size()
-    #                 loss_task = distillation_task(output['output'][task].view(B*N, C), teacher_preds['output'][task].view(B*N, C))
-    #                 if task == t:
-    #                     if task!= 'VA':
-    #                         criterion_task = self._criterions_per_task[t].get_task_loss()
-    #                         B, N, C  = output['output'][t].size()
-    #                         loss_task = self._opt.lambda_teacher * loss_task + (1 - self._opt.lambda_teacher) * criterion_task(output['output'][t].view(B*N, C), label.view(B*N, -1).squeeze())
-                        
-    #                     else:
-    #                         criterion_task = self._criterions_per_task[t].get_task_loss()
-    #                         loss_v, loss_a = criterion_task(output['output'][t].view(B*N, C), label.view(B*N, -1).squeeze())
-    #                         loss_task = [self._opt.lambda_teacher * loss_task[0] + (1 - self._opt.lambda_teacher) *loss_v,
-    #                                     self._opt.lambda_teacher * loss_task[1] + (1 - self._opt.lambda_teacher) *loss_a,] 
-    #                 if task!= 'VA':
-    #                     loss_per_task[task] += loss_task.item()
-    #                     loss += loss_task
-    #                 else:
-    #                     loss_v, loss_a = loss_task
-    #                     loss_per_task['valence'] += loss_v.item()
-    #                     loss_per_task['arousal'] += loss_a.item()
-    #                     loss += loss_v + loss_a
-    #         loss = loss/len(self._opt.tasks)
-    #         for key in loss_per_task.keys():
-    #             loss_task = loss_per_task[key]
-    #             train_dict['loss_'+key] = loss_task/len(self._opt.tasks)
-    #         train_dict['loss'] = loss.item()
-    #         self._optimizer.zero_grad()
-    #         loss.backward()
-    #         self._optimizer.step()
-    #         self.loss_dict = train_dict
-    #     else:
-    #         raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
+
+    def optimize_parameters_kd(self, train_batch, FA_teacher = None,
+        laplacian_matrix = None, reg_lambda = 1e-3): # knowledge distillation with ensemble
+        train_dict = {}
+        loss = 0.
+        tasks = copy(self.tasks)
+        if 'FA' in self.tasks:
+            tasks.remove('FA')
+        if self._is_train:
+            input_image = Variable(train_batch['image'])
+            EXPR_label = Variable(train_batch['EXPR_label'])
+            AU_label = Variable(train_batch['AU_label'])
+            VA_label = Variable(train_batch['VA_label'])
+            if len(self._gpu_ids) > 0:
+                input_image = input_image.cuda()
+                EXPR_label =  EXPR_label.cuda()
+                AU_label = AU_label.cuda()
+                VA_label = VA_label.cuda()
+            output, _ = self._model(input_image)
+            teacher_probas = {"EXPR": EXPR_label, "AU": AU_label, "VA": VA_label}
+            for task in tasks:
+                distillation_task = get_distillation_loss(task)
+                B, N, C  = output[task].size()
+                loss_task = distillation_task(output[task].view(B*N, C), teacher_probas[task].view(B*N, C))                
+                train_dict["loss_{}".format(task)] = loss_task.item()
+                loss += self.normalize_lambda(self.lambdas_per_task)[task] * loss_task
+            # laplacian_matrix regularization
+            if (laplacian_matrix is not None) and (reg_lambda >0):
+                if len(self._gpu_ids) > 0:
+                    laplacian_matrix = laplacian_matrix.cuda()
+                Z = []
+                for task in tasks:
+                    pred = output[task].view(B*N, -1)
+                    if task == 'EXPR':
+                        pred = F.softmax(pred, dim=-1)
+                    elif task == 'AU':
+                        pred = torch.sigmoid(pred)
+                    elif task == 'VA':
+                        pred = torch.cat([F.softmax(pred[:, :20], dim=-1), F.softmax(pred[:, 20:], dim=-1)], dim=-1)
+                    Z.append(pred)
+                Z = torch.cat(Z, dim=-1)
+                regularization_term = torch.trace(Z @ laplacian_matrix @ Z.T)
+                train_dict["loss_reg"] = regularization_term.item() * (1/(B*N))
+                loss += regularization_term* reg_lambda * (1/(B*N))
+            else:
+                train_dict["loss_reg"] = 0
+            # FA 
+            if FA_teacher is not None and 'FA' in self.tasks:
+                with torch.no_grad():
+                    FA_label = FA_teacher(input_image.view((B*N,) + input_image.size()[2:]))
+                B, N, C  = output['FA'].size()
+                distillation_task = get_distillation_loss('FA')
+                loss_FA = distillation_task(output['FA'].view(B*N, C), FA_label.view(B*N, -1).squeeze(-1))
+                train_dict['loss_FA'] = loss_FA.item() 
+                loss += self.normalize_lambda(self.lambdas_per_task)['FA'] * loss_FA
+            train_dict['loss'] = loss.item()
+
+            self._optimizer.zero_grad()
+            loss.backward()
+            self._optimizer.step()
+            self.loss_dict = train_dict
+        else:
+            raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
     def get_current_errors(self):
         return self.loss_dict
     def get_metrics_per_task(self):
