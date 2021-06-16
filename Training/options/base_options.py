@@ -21,10 +21,10 @@ class BaseOptions():
         ########## Data and tasks #########
         self._parser.add_argument('--dataset_names', type=str, default = ['Mixed_EXPR','Mixed_AU','Mixed_VA'],nargs="+")
         self._parser.add_argument('--tasks', type=str, default = ['EXPR','AU','VA'],nargs="+")
-        self._parser.add_argument('--seq_len', type=int, default= 30, help='length of input seq ')
+        self._parser.add_argument('--seq_len', type=int, default= 16, help='length of input seq ')
         self._parser.add_argument('--fps', type=int, default=30, help=
             "Changing the fps to some integer smaller than 30 can change the sampling rate")
-        self._parser.add_argument('--batch_size', type=int, default= 2, help='input batch size per task')
+        self._parser.add_argument('--batch_size', type=int, default= 5, help='input batch size per task')
         self._parser.add_argument('--image_size', type=int, default= 112, help='input image size') 
 
         ########### Ablation study: w/o auxillary task; Transformer or RNN #########
