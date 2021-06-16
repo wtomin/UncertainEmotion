@@ -130,23 +130,11 @@ def get_distillation_loss(task):
         return nn.L1Loss(reduction = 'mean')
 
 def AU_distillation_loss(y, teacher_probas, T = 1.0):
-    pos_weight = torch.tensor([23/3, 47/3, 21/4, 37/13, 3/2, 13/7, 3, 97/3, 97/3, 97/3, 37/63, 23/2])
-    if y.is_cuda:
-        pos_weight = pos_weight.cuda()
     teacher_probas = torch.sigmoid(invert_sigmoid(teacher_probas)/T)
-    return F.binary_cross_entropy_with_logits(y/T, teacher_probas, pos_weight = pos_weight)
+    return F.binary_cross_entropy_with_logits(y/T, teacher_probas)
 def EXPR_distillation_loss(y, teacher_probas, T = 1.0):
-    weight = torch.tensor([2.5, 25, 40, 33, 4, 5.88, 12.5])
-    if y.is_cuda:
-        weight = weight.cuda()
     teacher_probas = F.softmax(invert_softmax(teacher_probas)/T, dim=-1)
-    category_teacher_labels = teacher_probas.argmax(-1)
-    # weighted average over batch
-    weights_batch = weight[category_teacher_labels]
-    weights_batch = weights_batch/(weights_batch).sum()
-    weights_batch = weights_batch.view((-1, 1))
-    kl_div = nn.KLDivLoss(reduction = 'none')(F.log_softmax(y/T, dim=-1), teacher_probas)
-    kl_div = (kl_div * weights_batch).sum()
+    kl_div = nn.KLDivLoss(reduction = 'batchmean')(F.log_softmax(y/T, dim=-1), teacher_probas)
     return kl_div
 def VA_distillation_loss(y, teacher_probas, T=1.0):
     def distill(y, teacher_probas, T=1.0):
