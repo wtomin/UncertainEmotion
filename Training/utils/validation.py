@@ -10,7 +10,15 @@ def sigmoid(x):
     return np.exp(x)/(1+np.exp(x))
 def softmax(x, axis=-1):
     return np.exp(x)/np.expand_dims(np.sum(np.exp(x), axis=axis), axis)
-
+def invert_sigmoid(y):
+    y[y==0] = EPS
+    y[y==1] = 1-EPS
+    x = torch.log(torch.div(y, 1-y))
+    return x
+def invert_softmax(y):
+    y[y==0] = EPS
+    y[y==1] = 1-EPS
+    return torch.log(y)
 def averaged_f1_score(input, target):
     N, label_size = input.shape
     f1s = []
@@ -111,7 +119,52 @@ def FA_metric(x, y):
     # L1 Loss
     assert x.shape == y.shape, 'The prediction and label must have the same shape'
     return [None, None], np.abs(x - y).mean()
+def get_distillation_loss(task):
+    if task == 'AU':
+        return AU_distillation_loss
+    elif task == 'EXPR':
+        return EXPR_distillation_loss
+    elif task == 'VA':
+        return VA_distillation_loss
+    elif task == 'FA':
+        return nn.L1Loss(reduction = 'mean')
 
+def AU_distillation_loss(y, teacher_probas, T = 1.0):
+    pos_weight = torch.tensor([23/3, 47/3, 21/4, 37/13, 3/2, 13/7, 3, 97/3, 97/3, 97/3, 37/63, 23/2])
+    if y.is_cuda:
+        pos_weight = pos_weight.cuda()
+    teacher_probas = torch.sigmoid(invert_sigmoid(teacher_probas)/T)
+    return F.binary_cross_entropy_with_logits(y/T, teacher_probas, pos_weight = pos_weight)
+def EXPR_distillation_loss(y, teacher_probas, T = 1.0):
+    weight = torch.tensor([2.5, 25, 40, 33, 4, 5.88, 12.5])
+    if y.is_cuda:
+        weight = weight.cuda()
+    teacher_probas = F.softmax(invert_softmax(teacher_probas)/T, dim=-1)
+    category_teacher_labels = teacher_probas.argmax(-1)
+    # weighted average over batch
+    weights_batch = weight[category_teacher_labels]
+    weights_batch = weights_batch/(weights_batch).sum()
+    weights_batch = weights_batch.view((-1, 1))
+    kl_div = nn.KLDivLoss(reduction = 'none')(F.log_softmax(y/T, dim=-1), teacher_probas)
+    kl_div = (kl_div * weights_batch).sum()
+    return kl_div
+def VA_distillation_loss(y, teacher_probas, T=1.0):
+    def distill(y, teacher_probas, T=1.0):
+        N = 20
+        loss_v = nn.KLDivLoss(reduction = 'batchmean')(F.log_softmax(y[:, :N]/T, dim=-1), F.softmax(invert_softmax(teacher_probas[:, :N])/T, dim=-1))
+        loss_a = nn.KLDivLoss(reduction = 'batchmean')(F.log_softmax(y[:, N:]/T, dim=-1), F.softmax(invert_softmax(teacher_probas[:, N:])/T, dim=-1))
+        return loss_v + loss_a
+    def ccc(y, teacher_probas, T = 1.0):
+        N = 20
+        bins = torch.tensor(np.linspace(-1, 1, N).astype(np.float32), requires_grad=False).view((1, -1))
+        if y.is_cuda:
+            bins = bins.cuda()
+        v_labels = (F.softmax(invert_softmax(teacher_probas[:, :N])/T, dim=-1) * bins).sum(-1)
+        a_labels = (F.softmax(invert_softmax(teacher_probas[:, N:])/T, dim=-1) * bins).sum(-1)
+        loss_v = CCCLoss()(y[:, :N], v_labels)
+        loss_a = CCCLoss()(y[:, N:], a_labels)
+        return loss_a + loss_v
+    return distill(y, teacher_probas, T=T) + ccc(y, teacher_probas, T=T)
 def get_mean_sigma(pred):
     C_double = pred.size(-1)
     num_classes = C_double//2
