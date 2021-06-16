@@ -91,7 +91,7 @@ class Validator(object):
             if task in self.validation_dataloaders.keys():
                 data_loader = self.validation_dataloaders[task]
                 print("{}: {} images".format(task, len(data_loader)*args.batch_size * args.seq_len))
-        save_file = 'N=10_loss_reweight/val_res.pkl'
+        save_file = 'N=5_loss_reweight/val_res.pkl'
         if not os.path.exists(os.path.dirname(save_file)):
             os.makedirs(os.path.dirname(save_file))
         if not os.path.exists(save_file):
@@ -311,7 +311,7 @@ class Validator(object):
         tasks = copy(args.tasks)
         if 'FA' in tasks:
             tasks.remove('FA')
-        hiddens = None
+        hiddens = dict([(i_model, None) for i_model in range(len(self._models))])
         video_name = None
         optimal_Ts = {}
         FA_metrics = {}
@@ -331,12 +331,12 @@ class Validator(object):
                     video_name = val_batch['video'][0]
                 else:
                     if video_name != val_batch['video'][0]:
-                        hiddens = None
+                        hiddens = dict([(i_model, None) for i_model in range(len(self._models))])
 
                 for i_model, model in enumerate(self._models):
                     model.set_input(wrapped_v_batch, input_tasks = [task])
-                    outputs, errors, hiddens = model.forward(return_estimates=False, 
-                        input_tasks = [task], FA_teacher=FA_teacher, hiddens = hiddens)
+                    outputs, errors, hiddens[i_model] = model.forward(return_estimates=False, 
+                        input_tasks = [task], FA_teacher=FA_teacher, hiddens = hiddens[i_model])
                     
                     if i_model not in track_val_preds[task].keys():
                         track_val_preds[task][i_model] = []
