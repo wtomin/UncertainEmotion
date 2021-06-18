@@ -32,19 +32,6 @@ def default_collate_override(batch):
     return default_collate_func(batch)
 
 setattr(dataloader, 'default_collate', default_collate_override)
-def get_degree_matrix(affinity_matrix):
-    degree_matrix = np.zeros_like(affinity_matrix)
-    N = degree_matrix.shape[0]
-    for i in range(N):
-        degree_matrix[i, i] = np.sum(affinity_matrix[i, :])
-    return degree_matrix
-def get_laplacian_matrix(affinity_matrix, degree_matrix):
-    N = degree_matrix.shape[0]
-    identity = np.identity(N)
-    sqrt_degree =  scipy.linalg.sqrtm(degree_matrix)
-    sqrt_degree_inverse = scipy.linalg.inv(sqrt_degree)
-    laplacian_matrix = identity - np.dot(np.dot(sqrt_degree_inverse, affinity_matrix), sqrt_degree_inverse)
-    return laplacian_matrix
 
 for t in torch._storage_classes:
   if sys.version_info[0] == 2:
@@ -54,14 +41,6 @@ for t in torch._storage_classes:
     if t in ForkingPickler._extra_reducers:
         del ForkingPickler._extra_reducers[t]
 args = TrainOptions().parse()
-# the new_annotation.pkl contains the prediction of the ensemble model on the both the training set and validation
-annotation_file = 'N=5_loss_reweight/new_annotation.pkl'
-affinity_matrix = "N=5_loss_reweight/affinity_matrix.pkl"
-affinity_matrix, tasks = pickle.load(open(affinity_matrix, 'rb'))
-assert tasks == args.tasks, "loaded affinity matrix has different tasks from the training"
-laplacian_matrix = get_laplacian_matrix(affinity_matrix, get_degree_matrix(affinity_matrix))
-laplacian_matrix = torch.tensor(laplacian_matrix.astype(np.float32))
-reg_lambda = 0.
 
 if args.auxillary:
     from utils.misc import mobile_facenet
@@ -153,8 +132,7 @@ class Trainer:
             do_print_terminal = time.time() - self._last_print_time > args.print_freq_s 
             do_save = time.time() - self._last_save_time > args.save_freq_s
             # train model
-            self._model.optimize_parameters_kd(train_batch, FA_teacher=FA_teacher,
-                laplacian_matrix=laplacian_matrix, reg_lambda=reg_lambda)
+            self._model.optimize_parameters_kd(train_batch, FA_teacher=FA_teacher)
 
             # update epoch info
             self._total_steps += 1
