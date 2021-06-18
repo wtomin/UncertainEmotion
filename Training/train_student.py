@@ -162,7 +162,6 @@ class Trainer:
                                         errors['loss'])
         for task in args.tasks:
             output += 'loss_{} {:.4f}\t'.format(task, errors['loss_{}'.format(task)])
-        output += 'loss reg {:.4f}\t'.format( errors['loss_reg'])
         print(output)
     def _validate(self, i_epoch):
         val_start_time = time.time()
