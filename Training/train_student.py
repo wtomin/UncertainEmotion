@@ -50,7 +50,7 @@ if args.auxillary:
     FA_teacher.eval()
 else:
     FA_teacher = None
-
+annotation_file = 'N=5_loss_reweight/new_annotation.pkl'
 
 class Trainer:
     def __init__(self):
