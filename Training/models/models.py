@@ -271,8 +271,8 @@ class ModelWrapper(object):
         else:
             raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
 
-    def optimize_parameters_kd(self, train_batch, FA_teacher = None,
-        laplacian_matrix = None, reg_lambda = 1e-3): # knowledge distillation with ensemble
+    def optimize_parameters_kd(self, train_batch, FA_teacher = None): 
+    # knowledge distillation with ensemble
         train_dict = {}
         loss = 0.
         tasks = copy(self.tasks)
@@ -296,26 +296,6 @@ class ModelWrapper(object):
                 loss_task = distillation_task(output[task].view(B*N, C), teacher_probas[task].view(B*N, C))                
                 train_dict["loss_{}".format(task)] = loss_task.item()
                 loss += self.normalize_lambda(self.lambdas_per_task)[task] * loss_task
-            # laplacian_matrix regularization
-            if (laplacian_matrix is not None) and (reg_lambda >0):
-                if len(self._gpu_ids) > 0:
-                    laplacian_matrix = laplacian_matrix.cuda()
-                Z = []
-                for task in tasks:
-                    pred = output[task].view(B*N, -1)
-                    if task == 'EXPR':
-                        pred = F.softmax(pred, dim=-1)
-                    elif task == 'AU':
-                        pred = torch.sigmoid(pred)
-                    elif task == 'VA':
-                        pred = torch.cat([F.softmax(pred[:, :20], dim=-1), F.softmax(pred[:, 20:], dim=-1)], dim=-1)
-                    Z.append(pred)
-                Z = torch.cat(Z, dim=-1)
-                regularization_term = torch.trace(Z @ laplacian_matrix @ Z.T)
-                train_dict["loss_reg"] = regularization_term.item() * (1/(B*N))
-                loss += regularization_term* reg_lambda * (1/(B*N))
-            else:
-                train_dict["loss_reg"] = 0
             # FA 
             if FA_teacher is not None and 'FA' in self.tasks:
                 with torch.no_grad():
