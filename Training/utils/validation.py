@@ -137,11 +137,6 @@ def EXPR_distillation_loss(y, teacher_probas, T = 1.0):
     kl_div = nn.KLDivLoss(reduction = 'batchmean')(F.log_softmax(y/T, dim=-1), teacher_probas)
     return kl_div
 def VA_distillation_loss(y, teacher_probas, T=1.0):
-    def distill(y, teacher_probas, T=1.0):
-        N = 20
-        loss_v = nn.KLDivLoss(reduction = 'batchmean')(F.log_softmax(y[:, :N]/T, dim=-1), F.softmax(invert_softmax(teacher_probas[:, :N])/T, dim=-1))
-        loss_a = nn.KLDivLoss(reduction = 'batchmean')(F.log_softmax(y[:, N:]/T, dim=-1), F.softmax(invert_softmax(teacher_probas[:, N:])/T, dim=-1))
-        return loss_v + loss_a
     def ccc(y, teacher_probas, T = 1.0):
         N = 20
         bins = torch.tensor(np.linspace(-1, 1, N).astype(np.float32), requires_grad=False).view((1, -1))
@@ -152,7 +147,7 @@ def VA_distillation_loss(y, teacher_probas, T=1.0):
         loss_v = CCCLoss()(y[:, :N], v_labels)
         loss_a = CCCLoss()(y[:, N:], a_labels)
         return loss_a + loss_v
-    return distill(y, teacher_probas, T=T) + ccc(y, teacher_probas, T=T)
+    return ccc(y, teacher_probas, T=T)
 def get_mean_sigma(pred):
     C_double = pred.size(-1)
     num_classes = C_double//2
