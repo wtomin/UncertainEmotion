@@ -12,6 +12,7 @@ checkpoints/
 *.so
 *.pyc
 *.so
+*.wav
 
 # shell files
 # 
