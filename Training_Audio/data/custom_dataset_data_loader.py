@@ -29,12 +29,12 @@ class Multitask_Iterator_Wrapper:
 
 class Multitask_DatasetDataLoader:
     def __init__(self, train_mode, num_threads, dataset_names,
-        tasks, batch_size, seq_len, sr, transform=None):
+        tasks, batch_size, time_length, sr, transform=None):
         self.train_mode = train_mode
         self.dataset_names  = dataset_names
         self.tasks = tasks
         self.batch_size = batch_size
-        self.seq_len = seq_len
+        self.time_length = time_length
         self.sr = sr
         self.transform = transform
         self._is_train = self.train_mode == 'Train'
@@ -53,7 +53,7 @@ class Multitask_DatasetDataLoader:
         self.datasets = OrderedDict()
         for i, dataset_name in enumerate(self.dataset_names):
             task = self.tasks[i]
-            self.datasets[task] = DatasetFactory.get_by_name(dataset_name, self.seq_len, self.sr, self.train_mode, self.transform)
+            self.datasets[task] = DatasetFactory.get_by_name(dataset_name, self.time_length, self.sr, self.train_mode, self.transform)
         self.cumulative_sizes = self.cumsum([dataset for (k, dataset) in self.datasets.items()]) # number of instances, cumulative sizes
         
     def _create_dataloaders(self):

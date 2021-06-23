@@ -13,13 +13,13 @@ PRESET_VARS = PATH()
 from utils.transforms import get_meltransform
 import numpy as np
 class dataset_Mixed_VA(DatasetBase):
-    def __init__(self, seq_len, sr = 16000, train_mode='Train', transform = None, num_downsamples = 4):
-        super(dataset_Mixed_VA, self).__init__(train_mode, transform)
+    def __init__(self,  time_length, sr = 16000, train_mode='Train', transform = None, num_downsamples = 4):
+        super(dataset_Mixed_VA, self).__init__(time_length, sr, train_mode, transform)
         self._name = 'dataset_Mixed_VA'
         self._train_mode = train_mode
-        self.seq_len = seq_len
+        self.time_length = time_length
         self.sr = sr
-        self.meltransform = get_meltransform(self.seq_len, self.sr)
+        #self.meltransform = get_meltransform(self.time_length, self.sr)
         if transform is not None:
             self._transform = transform  
         else:
@@ -31,25 +31,14 @@ class dataset_Mixed_VA(DatasetBase):
     def __getitem__(self, index):
         assert (index < self._dataset_size)
         # start_time = time.time()
-        data = self.sample_seqs[index]
-        audio, label, audio_file = data
+        data = self.sample_collections[index]
+        audio, label, audio_file, length = data
         # change the audio signals to melspectrogram
         if not torch.is_tensor(audio):
             audio = torch.tensor(audio.astype(np.float32))
-        audio = self.meltransform(audio).detach()
-        length_labels = label.shape[0]
-        target_audio_length = 2 ** self.num_downsamples * length_labels
-        N_C, W, H = audio.size()
-        if H > target_audio_length:
-            new_audio = audio[:, :, :target_audio_length]
-        elif H < target_audio_length:
-            new_audio = torch.zeros((N_C, W, target_audio_length))
-            new_audio[:, :, :target_audio_length] = audio
-        else:
-            new_audio = audio
-        audio = new_audio
         sample = {'audio': audio,
-                  'label': np.array(label),
+                  'label': label,
+                  'length': length,
                   'audio_file': audio_file,
                   'video': audio_file.split('/')[-1].split('.')[0],
                   'index': index,

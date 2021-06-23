@@ -3,6 +3,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class LinearDecoder(nn.Module):
+    def __init__(self, ninp, nout, dropout=0.5):
+        super(LinearDecoder, self).__init__()
+        self.model_type = 'Linear'
+        self.dropout = nn.Dropout(dropout)
+        self.decoder = nn.Linear(ninp, nout)
+    def forward(self, input, hidden = None):
+        input = self.dropout(input)
+        output = self.decoder(input)
+        return output, None
 # https://github.com/pytorch/examples/blob/01539f9eada34aef67ae7b3d674f30634c35f468/word_language_model/model.py
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""

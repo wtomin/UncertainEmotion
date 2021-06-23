@@ -10,18 +10,19 @@ from PATH import PATH
 from utils import read_audio, downsample2, upsample2, read_Expr, read_VA, resample_labels
 PRESET_VARS = PATH()
 import pickle
+import logging
 
 class DatasetFactory:
     def __init__(self):
         pass
     @staticmethod
-    def get_by_name(dataset_name, seq_len, sr, train_mode='Train', transform = None):
+    def get_by_name(dataset_name, time_length, sr, train_mode='Train', transform = None):
         if dataset_name == 'Mixed_EXPR':
             from data.dataset_Mixed_EXPR import dataset_Mixed_EXPR
-            dataset = dataset_Mixed_EXPR(seq_len, sr, train_mode, transform)
+            dataset = dataset_Mixed_EXPR(time_length, sr, train_mode, transform)
         elif dataset_name == 'Mixed_VA':
             from data.dataset_Mixed_VA import dataset_Mixed_VA
-            dataset = dataset_Mixed_VA(seq_len, sr, train_mode, transform)
+            dataset = dataset_Mixed_VA(time_length, sr, train_mode, transform)
         else:
             raise ValueError("Dataset [%s] not recognized." % dataset_name)
 
@@ -50,13 +51,15 @@ def frames_to_label(label_array, audio_frames, discard_value,
     return label_array, audio_frames
 
 class DatasetBase(data.Dataset):
-    def __init__(self, train_mode='Train', transform=None):
+    def __init__(self, time_length, sr = 16000, train_mode='Train', transform=None):
         super(DatasetBase, self).__init__()
         self._name = 'BaseDataset'
         self._root = None
         self._transform = None
         self._train_mode = None
+        self.time_length = time_length
         self.ref_video_fps = 30
+        self.shift_length = 1/self.ref_video_fps
         self._create_transform()
 
     @property
@@ -91,27 +94,15 @@ class DatasetBase(data.Dataset):
 
     def _read_dataset_paths(self, task_name):
         data = self._read_path_label(PRESET_VARS.Aff_wild2.data_file, task_name)
-        #sample them 
-        seq_len = self.seq_len
-        self.sample_seqs = []
-
+        
+        self.sample_collections = []
         print("Loading audio frames to dataset...")
+        # parse all audio files in the data 
         for i_line, line in tqdm(data.iterrows(), total = len(data)):
             audio_file = line['audio']
             length = line['length']
             annot_file = line['annotation']
-            out, sr = read_audio(audio_file)
-            if sr < self.sr:
-                assert (self.sr / sr)%2 == 0, "source sample rate {} must be 2^n times {}".format(sr, self.sr)
-                while sr < self.sr:
-                    out = upsample2(out)
-                    sr = sr*2
-            elif sr > self.sr:
-                assert (sr / self.sr)%2==0, "source sample rate {} must be 2^n times {}".format(sr, self.sr)
-                while sr > self.sr:
-                    out = downsample2(out)
-                    sr = int(0.5*sr)
-            assert sr == self.sr, 'sample rate must be {}Hz'.format(self.sr)
+            # read annotations
             if task_name == 'VA':
                 read_func = read_VA
                 discard_value = -5.
@@ -119,32 +110,45 @@ class DatasetBase(data.Dataset):
                 read_func = read_Expr
                 discard_value = -1.
             labels = read_func(annot_file)
+            # read the audio file
+            out, sr = read_audio(audio_file)
+            assert sr == self.sr, "expect the sample rate equals {}, got {}".format(self.sr, sr)
             audio_length = out.size(-1)
-            time_length = audio_length/sr
-
-            target_len = int(time_length*self.ref_video_fps)
+            duration = audio_length/sr
+            # upsample or downsample the labels to meet the length of audio signal
+            target_len = int(duration*self.ref_video_fps)
             if target_len > 2* len(labels):
+                logging.info("Skip the audio file {} because the label shortage".format(audio_file))
                 continue
             labels = resample_labels(labels, 
                     target_len = target_len,
                     discrete=task_name == 'EXPR')
-
+            # the discarded values in the labels should be filtered, so are the audio signals 
             labels, out = frames_to_label(labels, out, 
                 discard_value=discard_value, video_fps = self.ref_video_fps, audio_sr = sr)
-            N = sr * self.seq_len
-            n = self.seq_len * self.ref_video_fps
-            for i in range(out.size(-1)//N):
-                start, end = i*N, (i+1)*N
-                if end >= out.size(-1):
-                    start, end = out.size(-1) - N, out.size(-1)
-                new_audio = out[:, start:end]
-                start, end = i*n, (i+1)*n 
-                if end >= len(labels):
-                    start, end = len(labels) - n, len(labels)
-                new_labels = labels[start: end]
-                assert new_audio.size(-1) == N
-                assert len(new_labels) == n
-                self.sample_seqs.append((new_audio, new_labels, audio_file))
+            assert out.size(0) == 1, 'expect mono audio signal'
+            out = out.view(-1)
+            audio_length = int(np.round(sr * self.time_length)) # 0.63 * 16000= 100080
+            audio_stride = int(np.round(sr * self.shift_length))  # 1/30 * 16000 = 5333
+            #label_length = int(np.round(self.time_length * self.ref_video_fps)) # 0.63 * 30 = 19
+            label_stride = int(np.round(self.shift_length * self.ref_video_fps)) # 1
+            assert label_stride == 1
 
-        self._ids = np.arange(len(self.sample_seqs)) 
+            n_segments = labels.shape[0]
+            if out.size(0) < audio_length:                
+                logging.info("Skip the audio file {} because the audio is too short".format(audio_file))
+                continue
+            for i_seg in range(n_segments):
+                l = labels[i_seg]
+                start, end = i_seg * audio_stride, i_seg * audio_stride + audio_length
+                if start > out.size(0):
+                    raise ValueError("start index exceeds the audio signal length")
+                elif end > out.size(0):
+                    start, end = out.size(0) - audio_length, out.size(0)
+                new_audio =  out[start: end]
+                assert len(new_audio) == audio_length, "audio length incorrect"
+                self.sample_collections.append((new_audio, l, audio_file, audio_length))
+            # if i_line>20:
+            #     break
+        self._ids = np.arange(len(self.sample_collections)) 
         self._dataset_size = len(self._ids)

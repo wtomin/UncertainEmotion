@@ -4,7 +4,7 @@ import torch.nn as nn
 from collections import OrderedDict
 from torch.autograd import Variable
 from criterions.optim import Scheduler, Criterion, Optimizer, Metric
-from utils.validation import EXPR_metric, VA_metric, get_mean_sigma
+from utils.validation import EXPR_metric, VA_metric, VAD_metric, get_mean_sigma
 import os
 import numpy as np
 import torch.nn.functional as F
@@ -12,11 +12,11 @@ from copy import deepcopy, copy
 
 class ModelWrapper(object):
     def __init__(self, STModel, name, tasks, checkpoints_dir, 
-        loggings_dir, load_epoch, batch_size, seq_len, 
+        loggings_dir, load_epoch, batch_size, time_length, 
         lr, lr_policy, lr_decay_epochs, T_max, optimizer, wd, 
         gpu_ids,
-        EXPR_criterion, VA_criterion, 
-        lambda_EXPR, lambda_VA, 
+        EXPR_criterion, VA_criterion, VAD_criterion,
+        lambda_EXPR, lambda_VA, lambda_VAD,
         sr = 16000, 
         is_train = True,
         cuda = True,):
@@ -28,7 +28,7 @@ class ModelWrapper(object):
         self.loggings_dir = loggings_dir
         self.load_epoch = load_epoch
         self.batch_size = batch_size
-        self.seq_len = seq_len
+        self.time_length = time_length
         self._is_train = is_train
         self.lr = lr
         self.lr_policy = lr_policy
@@ -50,10 +50,11 @@ class ModelWrapper(object):
         self.categories = categories
 
         self._criterions_per_task = {
-        'EXPR': EXPR_criterion, 'VA': VA_criterion,}
+        'EXPR': EXPR_criterion, 'VA': VA_criterion, 'VAD': VAD_criterion}
 
         self.lambda_EXPR = lambda_EXPR
         self.lambda_VA = lambda_VA
+        self.lambda_VAD = lambda_VAD
 
         # init train variables
         if self._is_train:
@@ -81,7 +82,7 @@ class ModelWrapper(object):
     @property
     def lambdas_per_task(self):
         lambda_dict =  {'EXPR': self.lambda_EXPR, 
-        'VA': self.lambda_VA,}
+        'VA': self.lambda_VA, "VAD": self.lambda_VAD}
         return lambda_dict
 
     def update_lambda(self, no_improve_n_epochs):
@@ -118,19 +119,22 @@ class ModelWrapper(object):
         _Tensor_Long = torch.cuda.LongTensor if self.cuda else torch.LongTensor
         _Tensor_Float = torch.cuda.FloatTensor if self.cuda else torch.FloatTensor
         if task == 'VA':
-            return _Tensor_Float(self.batch_size, self.seq_len * self.fps, self._output_size_per_task[task])
+            return _Tensor_Float(self.batch_size, self._output_size_per_task[task])
         elif task == 'EXPR':
-            return _Tensor_Long(self.batch_size, self.seq_len * self.fps)
+            return _Tensor_Long(self.batch_size)
 
     def _init_prefetch_inputs(self):
-        input_tasks = self.tasks
-        self._input_audio = OrderedDict([(task, self._Tensor(self.batch_size, 1, self.seq_len * self.sr )) for task in input_tasks])  
+        input_tasks = copy(self.tasks)
+        if 'VAD' in input_tasks:
+            input_tasks.remove('VAD')
+        self._input_audio = OrderedDict([(task, self._Tensor(self.batch_size, int(np.round(self.time_length * self.sr)))) for task in input_tasks])  
         self._label = OrderedDict([(task, self._format_label_tensor(task)) for task in input_tasks])
     def _init_losses(self):
         # get the training loss
         criterions = {}
         criterions['EXPR'] = Criterion().get(self._criterions_per_task['EXPR'], len(self.categories['EXPR']))
         criterions['VA'] = Criterion().get(self._criterions_per_task['VA'], len(self.categories['VA']) * 20)
+        criterions['VAD'] = Criterion().get(self._criterions_per_task['VAD'], 2) # false or true
         self._criterions_per_task = criterions
 
     def set_input(self, input, input_tasks = None):
@@ -139,6 +143,8 @@ class ModelWrapper(object):
         During validation, because the current model needs to be evaluated on all sofar tasks, the task needs to be specified
         """
         tasks = copy(self.tasks) if input_tasks is None else input_tasks
+        if 'VAD' in tasks:
+            tasks.remove('VAD')
         for t in tasks:
             self._input_audio[t].resize_(input[t]['audio'].size()).copy_(input[t]['audio'])
             self._label[t].resize_(input[t]['label'].size()).copy_(input[t]['label'])
@@ -153,76 +159,95 @@ class ModelWrapper(object):
         self._model.eval()
         self._is_train = False
 
-    def forward(self, return_estimates=False, input_tasks = None,
-        hiddens = None):
+    def forward(self, return_estimates=False, input_tasks = None, VAD_teacher = None):
         # validation the eval_task
         val_dict = dict() 
         out_dict = dict()
         loss = 0.
         if not self._is_train:
             tasks = copy(self.tasks) if input_tasks is None else input_tasks
-
+            if 'VAD' in tasks:
+                tasks.remove('VAD')
             for t in tasks:
                 with torch.no_grad():
                     input_audio = Variable(self._input_audio[t])
                     label = Variable(self._label[t])
-                    output, hiddens = self._model(input_audio, hiddens)
+                    input_length = torch.tensor([input_audio.size(-1)]*len(input_audio)).to(input_audio.device)
+                    output = self._model(input_audio, input_length)
                 criterion_task = self._criterions_per_task[t]
-                B, N, C  = output[t].size()
-                loss_task = criterion_task(output[t].view(B*N, C), label.view(B*N, -1).squeeze(-1)) 
+                loss_task = criterion_task(output[t], label) 
                 val_dict['loss_'+t] = loss_task.item()
                 loss += self.normalize_lambda(self.lambdas_per_task)[t] * loss_task
 
+                if VAD_teacher is not None and 'VAD' in self.tasks:
+                    with torch.no_grad():
+                        VAD_label = VAD_teacher(input_audio, input_length)
+                        B, C  = output['VAD'].size()
+                        loss_VAD = self._criterions_per_task['VAD'](F.log_softmax(output['VAD'], dim=-1), F.softmax(VAD_label, dim=-1))
+                    if 'loss_VAD' not in val_dict.keys():
+                        val_dict['loss_VAD'] = []
+                    val_dict['loss_VAD'].append(loss_VAD.item() * (1/len(tasks)))
+                    loss += self.normalize_lambda(self.lambdas_per_task)['VAD'] * (1/len(tasks)) * loss_VAD
                 if return_estimates:
-                    for task in self.tasks:
-                        out_dict[t] = self._format_estimates(output)
+                    out_dict[t] = self._format_estimates(output)
                 else:
-                    for task in self.tasks:
-                        out_dict[t] = dict([(key, output[key].cpu().numpy()) for key in output.keys()])
+                    out_dict[t] = dict([(key, output[key].cpu().numpy()) for key in output.keys()])
             val_dict['loss'] = loss.item()
         else:
             raise ValueError("Do not call forward function in training mode. USE optimize_parameters() INSTEAD.")
-        if 'loss_FA' in val_dict:
-            val_dict['loss_FA'] = sum(val_dict['loss_FA'])
-        return out_dict, val_dict, hiddens
+        if 'loss_VAD' in val_dict:
+            val_dict['loss_VAD'] = sum(val_dict['loss_VAD'])
+        return out_dict, val_dict
     def _format_estimates(self, output):
         estimates = {}
         for task in output.keys():
-
             if task == 'EXPR':
                 o = F.softmax(output['EXPR'].cpu(), dim=-1).argmax(-1).type(torch.LongTensor)
                 estimates['EXPR'] = o.numpy()
             elif task == 'VA':
                 N = 20
-                v = F.softmax(output['VA'][:,:, :N].cpu(), dim=-1).numpy()
-                a = F.softmax(output['VA'][:,:, N:].cpu(), dim=-1).numpy()
+                v = F.softmax(output['VA'][:, :N].cpu(), dim=-1).numpy()
+                a = F.softmax(output['VA'][:,N:].cpu(), dim=-1).numpy()
                 bins = np.linspace(-1, 1, num=N)
                 v = (bins * v).sum(-1)
                 a = (bins * a).sum(-1)
                 estimates['VA'] = np.stack([v, a], axis = -1)
+            elif task == 'VAD':
+                o = F.softmax(output['VAD'].cpu(), dim=-1)
+                estimates['VAD'] = o.numpy()
 
         return estimates
-    def optimize_parameters(self):
+    def optimize_parameters(self, VAD_teacher=None):
         train_dict = dict()
         loss = 0.
         if self._is_train:
             tasks = copy(self.tasks)
+            if 'VAD' in tasks:
+                tasks.remove('VAD')
             for t in tasks:
                 input_audio = Variable(self._input_audio[t])
                 label = Variable(self._label[t])
-                output, _ = self._model(input_audio)
+                input_length = torch.tensor([input_audio.size(-1)]*len(input_audio)).to(input_audio.device)
+                output = self._model(input_audio, input_length)
                 criterion_task = self._criterions_per_task[t]
-                B, N, C  = output[t].size()
-                loss_task = criterion_task(output[t].view(B*N, C), label.view(B*N, -1).squeeze(-1)) 
+                loss_task = criterion_task(output[t], label) 
                 train_dict['loss_'+t] = loss_task.item()
                 loss += self.normalize_lambda(self.lambdas_per_task)[t] * loss_task
-
+                if VAD_teacher is not None and 'VAD' in self.tasks:
+                    with torch.no_grad():
+                        VAD_label = VAD_teacher(input_audio, input_length)
+                        B, C  = output['VAD'].size()
+                        loss_VAD = self._criterions_per_task['VAD'](F.log_softmax(output['VAD'], dim=-1), F.softmax(VAD_label, dim=-1))
+                    if 'loss_VAD' not in train_dict.keys():
+                        train_dict['loss_VAD'] = []
+                    train_dict['loss_VAD'].append(loss_VAD.item() * (1/len(tasks)))
+                    loss += self.normalize_lambda(self.lambdas_per_task)['VAD'] * (1/len(tasks)) * loss_VAD
             train_dict['loss'] = loss.item()
             self._optimizer.zero_grad()
             loss.backward()
             self._optimizer.step()
-            if 'loss_FA' in train_dict.keys():
-                train_dict['loss_FA'] = sum(train_dict['loss_FA'])
+            if 'loss_VAD' in train_dict.keys():
+                train_dict['loss_VAD'] = sum(train_dict['loss_VAD'])
             self.loss_dict = train_dict
         else:
             raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
@@ -275,7 +300,7 @@ class ModelWrapper(object):
     def get_current_errors(self):
         return self.loss_dict
     def get_metrics_per_task(self):
-        return {"EXPR": EXPR_metric, "VA": VA_metric}
+        return {"EXPR": EXPR_metric, "VA": VA_metric, "VAD": VAD_metric}
     def get_current_LR(self):
         LR = []
         for param_group in self._optimizer.param_groups:

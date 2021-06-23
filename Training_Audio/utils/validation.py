@@ -81,6 +81,9 @@ class CCCLoss(nn.Module):
 def VA_metric(x, y):
     items = [CCC_score(x[:,0], y[:,0]), CCC_score(x[:,1], y[:,1])]
     return items, sum(items)
+def VAD_metric(x, y):
+    assert x.shape == y.shape, 'The prediction and label must have the same shape'
+    return [None, None], nn.KLDivLoss(reduction='batchmean')(F.log(x+EPS), y)
 def EXPR_metric(x, y): 
     if not len(x.shape) == 1:
         if x.shape[1] == 1:

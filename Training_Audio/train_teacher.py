@@ -14,6 +14,15 @@ import pickle
 from utils.options import prepare_arguments
 from torch.utils.tensorboard import SummaryWriter
 from utils.transforms import get_audio_transforms
+try:
+    from torch.cuda.amp import autocast
+except ImportError:
+    from contextlib import contextmanager
+
+    @contextmanager
+    def autocast(enabled=None):
+        yield
+
 #################RuntimeError: received 0 items of ancdata ###########################
 import torch
 torch.multiprocessing.set_sharing_strategy("file_system")
@@ -43,17 +52,20 @@ parser = argparse.ArgumentParser()
 ######### Losses #############
 parser.add_argument('--EXPR_criterion', type=str, default = 'ce')
 parser.add_argument('--VA_criterion', type=str, default = 'ccc')
+parser.add_argument('--VAD_criterion', type=str, default='kld')
 parser.add_argument('--lambda_EXPR', type=float, default=1)
 parser.add_argument('--lambda_VA', type=float, default=1)
+parser.add_argument('--lambda_VAD', type=float, default=1)
 ########## Data and tasks #########
 parser.add_argument('--dataset_names', type=str, default = ['Mixed_EXPR','Mixed_VA'],nargs="+")
 parser.add_argument('--tasks', type=str, default = ['EXPR','VA'],nargs="+")
-parser.add_argument('--seq_len', type=int, default= 1, help='length of input seq (seconds)')
+parser.add_argument("--time_length", type=float, default=0.63)
 parser.add_argument('--batch_size', type=int, default= 32, help='input batch size per task')
 parser.add_argument('--sr', type=int, default=16000, help='sample rate of audio')
 ########### Ablation study: w/o auxillary task; Transformer or RNN #########
-parser.add_argument('--TModel', type=str, default='GRU',
-                    help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
+# parser.add_argument('--TModel', type=str, default='Linear',
+#                     help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
+parser.add_argument('--auxillary', action='store_true', help="If true, voice activity detection will also be learned")
 ########## temporal model definition #########
 parser.add_argument('--nhead', type=int, default=2,
                     help='the number of heads in the encoder/decoder of the transformer model')
@@ -67,10 +79,10 @@ parser.add_argument('--load_epoch', type=int, default=-1,
 parser.add_argument('--lr', type=float, default=1e-3, 
     help= "The initial learning rate")
 parser.add_argument('--lr_policy', type=str, default='step', choices=['step', 'cosine'])
-parser.add_argument('--lr_decay_epochs', type=int, default=30, help='reduce the lr to 0.1*lr for every # epochs')
+parser.add_argument('--lr_decay_epochs', type=int, default=3, help='reduce the lr to 0.1*lr for every # epochs')
 parser.add_argument('--T_max', type=int, default=20000, help='the period for the cosine annealing (# iterations)')
 parser.add_argument('--weight_decay', type=float, default=0., help='weight decay')
-parser.add_argument('--nepochs', type=int, default=100)
+parser.add_argument('--nepochs', type=int, default=10)
 parser.add_argument('--optimizer', type=str, default='Adam')
 parser.add_argument('--gpu_ids', type=str, default='0', nargs='+',
     help='gpu ids: e.g. 0 , 0 1 2. use -1 for CPU')
@@ -87,37 +99,48 @@ parser.add_argument('--loggings_dir', type=str, default='./loggings', help='logg
 args = parser.parse_args()
 prepare_arguments(args, is_train=True)
 
+if args.auxillary:
+    from utils.misc import VAD_MarbleNet
+    print("Training model with an auxillary task: voice activity detection.")
+    args.tasks = args.tasks + ['VAD']
+    VAD_teacher = VAD_MarbleNet.from_pretrained(model_name="vad_marblenet")
+    if args.cuda:
+        VAD_teacher = VAD_teacher.to(torch.device("cuda:0"))
+    VAD_teacher.eval()
+else:
+    VAD_teacher = None
+
 class Trainer:
     def __init__(self):
         PRESET_VARS = PATH()
         self._model = ModelsFactory.get_by_name(args,
             is_train= True,
             dropout = 0.5,
-            pretrained=False)
+            pretrained=True)
         model = self._model._model
         print("number of parameters: {}".format(sum(p.numel() for p in model.parameters())))
         self.training_dataloaders = Multitask_DatasetDataLoader(train_mode = 'Train', 
             num_threads = args.n_threads_train, dataset_names=args.dataset_names,
-            tasks = args.tasks, batch_size = args.batch_size, seq_len = args.seq_len, sr = args.sr, 
-            transform = get_audio_transforms())
+            tasks = args.tasks, batch_size = args.batch_size, time_length = args.time_length, sr = args.sr, 
+            transform = None)
         self.training_dataloaders = self.training_dataloaders.load_multitask_train_data()
         self.validation_dataloaders = Multitask_DatasetDataLoader(
             train_mode = 'Validation', num_threads = args.n_threads_test, dataset_names=args.dataset_names,
-            tasks = args.tasks, batch_size = args.batch_size, seq_len = args.seq_len,  sr = args.sr, # validation set always sample by 30 fps
-            transform = get_audio_transforms())
+            tasks = args.tasks, batch_size = args.batch_size, time_length = args.time_length,  sr = args.sr, # validation set always sample by 30 fps
+            transform = None)
         self.validation_dataloaders = self.validation_dataloaders.load_multitask_val_test_data()
         
         print("Traning tasks {} on datasets: {}".format(args.tasks, args.dataset_names))
         actual_bs = args.batch_size* len(args.dataset_names)
         print("The actual batch size is {}*{}={}".format(args.batch_size, len(args.dataset_names), actual_bs))
-        print("Training sets: {} seconds ({} seconds per task)".format(len(self.training_dataloaders) * actual_bs * args.seq_len, 
-            len(self.training_dataloaders)* args.batch_size* args.seq_len))
+        print("Training sets: {} seconds ({} seconds per task)".format(len(self.training_dataloaders) * actual_bs * args.time_length, 
+            len(self.training_dataloaders)* args.batch_size* args.time_length))
         print("Validation sets")
         
         for task in args.tasks:
             if task in self.validation_dataloaders.keys():
                 data_loader = self.validation_dataloaders[task]
-                print("{}: {} seconds".format(task, len(data_loader)*args.batch_size * args.seq_len))
+                print("{}: {} seconds".format(task, len(data_loader)*args.batch_size * args.time_length))
         self.writer = SummaryWriter(log_dir = os.path.join(args.loggings_dir, args.name), 
                                  filename_suffix = args.name)
         self._train()
@@ -126,7 +149,7 @@ class Trainer:
         self._total_steps = args.load_epoch * len(self.training_dataloaders) 
         self._last_save_time = time.time()
         self._last_print_time = time.time()
-        self._current_val_acc = dict([(t, 0.) for t in args.tasks if t !='FA'] + [('FA', 1000)])
+        self._current_val_acc = dict([(t, 0.) for t in args.tasks if t !='VAD'] + [('VAD', 1000)])
         self._no_improve_n_epochs = dict([(t, 0) for t in args.tasks])
         for t in args.tasks:
             self.writer.add_scalar("Lambdas/{}".format(t), self._model.lambdas_per_task[t], 0)
@@ -139,27 +162,27 @@ class Trainer:
             self.training_dataloaders.reset()
             if args.lr_policy == 'step':
                 self._model._LR_scheduler.step()
-            if i_epoch % 10 ==0: # evaluate every 10 epochs
-                val_dict = self._validate(i_epoch)
-                val_acc = sum([val_dict[t] for t in args.tasks if t !='FA'])
-                cur_val_acc = sum([self._current_val_acc[t] for t in args.tasks if t !='FA'])
-                if val_acc > cur_val_acc:
-                    print("validation acc improved, from {:.4f} to {:.4f}".format(cur_val_acc, val_acc))
 
-                for t in args.tasks:
-                    metric = val_dict[t]
-                    if (t!='FA' and metric> self._current_val_acc[t]) or (t =='FA' and metric < self._current_val_acc[t]):
-                        self._current_val_acc[t] = metric
-                        self._no_improve_n_epochs[t] = 0
-                    else:
-                        self._no_improve_n_epochs[t] +=1
+            val_dict = self._validate(i_epoch)
+            val_acc = sum([val_dict[t] for t in args.tasks if t !='VAD'])
+            cur_val_acc = sum([self._current_val_acc[t] for t in args.tasks if t !='VAD'])
+            if val_acc > cur_val_acc:
+                print("validation acc improved, from {:.4f} to {:.4f}".format(cur_val_acc, val_acc))
 
-                self._model.update_lambda(self._no_improve_n_epochs)
-                for t in args.tasks:
-                    self.writer.add_scalar("Lambdas/{}".format(t), self._model.lambdas_per_task[t], i_epoch)
-                self.writer.add_scalar("Val_metric/total", val_acc, i_epoch)
+            for t in args.tasks:
+                metric = val_dict[t]
+                if (t!='VAD' and metric> self._current_val_acc[t]) or (t =='VAD' and metric < self._current_val_acc[t]):
+                    self._current_val_acc[t] = metric
+                    self._no_improve_n_epochs[t] = 0
+                else:
+                    self._no_improve_n_epochs[t] +=1
 
-                self._model.save(i_epoch) # save every epoch model
+            self._model.update_lambda(self._no_improve_n_epochs)
+            for t in args.tasks:
+                self.writer.add_scalar("Lambdas/{}".format(t), self._model.lambdas_per_task[t], i_epoch)
+            self.writer.add_scalar("Val_metric/total", val_acc, i_epoch)
+
+            self._model.save(i_epoch) # save every epoch model
 
             # print epoch info
             time_epoch = time.time() - epoch_start_time
@@ -178,8 +201,8 @@ class Trainer:
             do_save = time.time() - self._last_save_time > args.save_freq_s
             # train model
             self._model.set_input(train_batch)
-
-            self._model.optimize_parameters()
+            with autocast():
+                self._model.optimize_parameters(VAD_teacher = VAD_teacher)
 
             # update epoch info
             self._total_steps += 1
@@ -216,10 +239,9 @@ class Trainer:
         self._model.set_eval()
         eval_per_task = {}
         tasks = copy(args.tasks)
-        if 'FA' in tasks:
-            tasks.remove('FA')
-            eval_per_task['FA'] = []
-        hiddens = None
+        if 'VAD' in tasks:
+            tasks.remove('VAD')
+            eval_per_task['VAD'] = []
         video_name = None
         for task in tasks:
             track_val_preds = {'preds':[]}
@@ -229,14 +251,14 @@ class Trainer:
             for i_val_batch, val_batch in tqdm(enumerate(data_loader), total = len(data_loader)):
                 # evaluate model
                 wrapped_v_batch = {task: val_batch}
-                if video_name is None:
-                    video_name = val_batch['video'][0]
-                else:
-                    if video_name != val_batch['video'][0]:
-                        hiddens = None
+                video_name = val_batch['video'][0]
+                # if video_name is None:
+                    
+                # else:
+                #     if video_name != val_batch['video'][0]:
                 self._model.set_input(wrapped_v_batch, input_tasks = [task])
-                outputs, errors, hiddens = self._model.forward(return_estimates=True, 
-                    input_tasks = [task], hiddens = hiddens)
+                outputs, errors = self._model.forward(return_estimates=True, 
+                    input_tasks = [task], VAD_teacher=VAD_teacher)
 
                 # store current batch errors
                 for k, v in errors.items():
@@ -255,15 +277,15 @@ class Trainer:
             # calculate metric
             preds = np.concatenate(track_val_preds['preds'], axis=0)
             labels = np.concatenate(track_val_labels['labels'], axis=0)
-            B, N = preds.shape[:2]
+            #B, N = preds.shape[:2]
             metric_func = self._model.get_metrics_per_task()[task]
-            eval_items, eval_res = metric_func(preds.reshape(B*N, -1).squeeze(), labels.reshape(B*N, -1).squeeze())
+            eval_items, eval_res = metric_func(preds, labels)
             now_time = time.strftime("%H:%M", time.localtime(val_start_time))
             output = "{} Validation {}: Epoch [{}] Step [{}] loss {:.4f} Eval_0 {:.4f} Eval_1 {:.4f}".format(task, 
                 now_time, i_epoch, self._total_steps, val_errors['loss_{}'.format(task)], eval_items[0], eval_items[1])
-            if 'FA' in args.tasks:
-                output += " auxillary task FA loss: {:.4f}".format(val_errors['loss_FA'])
-                eval_per_task['FA'].append(val_errors['loss_FA'])
+            if 'VAD' in args.tasks:
+                output += " auxillary task VAD loss: {:.4f}".format(val_errors['loss_VAD'])
+                eval_per_task['VAD'].append(val_errors['loss_VAD'])
             print(output)
             eval_per_task[task] = [eval_items, eval_res]
 
@@ -277,7 +299,7 @@ class Trainer:
 
         for task in args.tasks:
             save_dir = 'Val_{}'.format(task)
-            if task != 'FA':
+            if task != 'VAD':
                 if task == 'AU' or task == 'EXPR':
                     name0, name1 = 'F1', 'Acc'
                 else:

@@ -116,7 +116,7 @@ class Criterion:
         return combine_losses
 
     def get_single_loss(self, loss):
-        if loss.lower() in ['ce', 'cce', 'bce', 'mse', 'l1', 'l1_loss', 'ccc', 'negative_ccc']:
+        if loss.lower() in ['ce', 'cce', 'bce', 'mse', 'l1', 'l1_loss', 'ccc', 'negative_ccc', 'kld']:
             if loss.lower() == 'ce':
                 loss_func = nn.CrossEntropyLoss(reduction = self.reduction, weight = self.weight)
             elif loss.lower() == 'cce':
@@ -135,6 +135,8 @@ class Criterion:
                 def VA_losses(pred, target):
                     return CCCLoss()(pred[..., :self.num_classes//2], target[..., 0]) + CCCLoss()(pred[..., self.num_classes//2:], target[..., 1])
                 loss_func = VA_losses
+            elif loss.lower() == 'kld':
+                loss_func = nn.KLDivLoss(reduction = 'batchmean')
             # function wrapper to get the first num_classes from pred
             @rename(loss)
             def inner_func(pred, target):
