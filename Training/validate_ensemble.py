@@ -91,7 +91,7 @@ class Validator(object):
             if task in self.validation_dataloaders.keys():
                 data_loader = self.validation_dataloaders[task]
                 print("{}: {} images".format(task, len(data_loader)*args.batch_size * args.seq_len))
-        save_file = 'N=5_loss_reweight/val_res.pkl'
+        save_file = 'N=5_student_round_1/val_res.pkl'
         if not os.path.exists(os.path.dirname(save_file)):
             os.makedirs(os.path.dirname(save_file))
         if not os.path.exists(save_file):
