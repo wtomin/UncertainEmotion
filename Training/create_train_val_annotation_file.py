@@ -7,11 +7,14 @@ import matplotlib
 import glob
 import pandas as pd
 from tqdm import tqdm
+import cv2
 parser = argparse.ArgumentParser(description='save annotations')
 parser.add_argument('--vis', action = 'store_true', 
                     help='whether to visualize the distribution')
 parser.add_argument('--annot_dir', type=str, default = 'annotations',
                     help='annotation dir')
+parser.add_argument('--video_dir', type=str, default = '/media/Samsung/Aff-wild2-Challenge/videos',
+                    help='video dir')
 parser.add_argument('--data_dir', type=str, default= '/media/Samsung/Aff-wild2-Challenge/cropped_aligned')
 
 args = parser.parse_args()
@@ -61,10 +64,22 @@ def frames_to_label(label_array, frames, discard_value):
 	prefix = '/'.join(frames[0].split('/')[:-1])
 	return_frames = [prefix+'/{0:05d}.jpg'.format(id+1) for id in frames_ids]
 	return label_array, return_frames, frames_ids
+def original_name(name):
+	if '_left' in name:
+		return name[:-5]
+	elif '_right' in name:
+		return name[:-6]
+	else:
+		return name
 def main():
 	annot_dir = args.annot_dir
 	tasks = [x for x in os.listdir(annot_dir)]
 	data_file = {}
+	all_videos = os.listdir(os.path.join(args.video_dir, 'batch1')) 
+	all_videos = [os.path.join(args.video_dir, 'batch1', p) for p in all_videos]
+	new_videos = os.listdir(os.path.join(args.video_dir, 'batch2')) 
+	new_videos = [os.path.join(args.video_dir, 'batch2', p) for p in new_videos]
+	all_videos += new_videos
 	for task in tasks:
 		if task == 'AU_Set':
 			AU_list = ['AU1','AU2','AU4','AU6','AU7','AU10','AU12','AU15','AU23','AU24','AU25','AU26']
@@ -79,6 +94,12 @@ def main():
 					au_array, frames_paths, frames_ids = frames_to_label(au_array, frames_paths, discard_value = -1)
 					data_dict = dict([(AU_list[i], au_array[:, i])for i in range(len(AU_list))])
 					data_dict.update({'path': frames_paths, 'frames_ids':frames_ids})
+					video_index = [video_path.split("/")[-1].split('.')[0] == original_name(name) for video_path in all_videos]
+					video_index = [i  for i, v in enumerate(video_index) if v][0]
+					video_path = all_videos[video_index]
+					video = cv2.VideoCapture(video_path)
+					fps = int(np.round(video.get(cv2.CAP_PROP_FPS)))
+					data_dict.update({'fps': [fps] * len(frames_paths)})
 					data_file[task][mode][name] = pd.DataFrame.from_dict(data_dict)
 			if args.vis:
 				total_dict = {**data_file[task]['Train_Set'], **data_file[task]['Validation_Set']}
@@ -105,6 +126,12 @@ def main():
 					frames_paths = sorted(glob.glob(os.path.join(args.data_dir, name, '*.jpg')))
 					expr_array, frames_paths, frames_ids = frames_to_label(expr_array, frames_paths, discard_value = -1)
 					data_dict = {'label':expr_array.reshape(-1), 'path':frames_paths, 'frames_ids': frames_ids}
+					video_index = [video_path.split("/")[-1].split('.')[0] == original_name(name) for video_path in all_videos]
+					video_index = [i  for i, v in enumerate(video_index) if v][0]
+					video_path = all_videos[video_index]
+					video = cv2.VideoCapture(video_path)
+					fps = int(np.round(video.get(cv2.CAP_PROP_FPS)))
+					data_dict.update({'fps': [fps] * len(frames_paths)})
 					data_file[task][mode][name] = pd.DataFrame.from_dict(data_dict)
 			if args.vis:
 				total_dict = {**data_file[task]['Train_Set'], **data_file[task]['Validation_Set']}
@@ -128,6 +155,12 @@ def main():
 					frames_paths = sorted(glob.glob(os.path.join(args.data_dir, name, '*.jpg')))
 					va_array, frames_paths, frames_ids = frames_to_label(va_array, frames_paths, discard_value = -5.)
 					data_dict = {'valence':va_array[:, 0],'arousal': va_array[:, 1], 'path':frames_paths, 'frames_ids': frames_ids}
+					video_index = [video_path.split("/")[-1].split('.')[0] == original_name(name) for video_path in all_videos]
+					video_index = [i  for i, v in enumerate(video_index) if v][0]
+					video_path = all_videos[video_index]
+					video = cv2.VideoCapture(video_path)
+					fps = int(np.round(video.get(cv2.CAP_PROP_FPS)))
+					data_dict.update({'fps': [fps] * len(frames_paths)})
 					data_file[task][mode][name] = pd.DataFrame.from_dict(data_dict)
 			if args.vis:
 				total_dict = {**data_file[task]['Train_Set'], **data_file[task]['Validation_Set']}
