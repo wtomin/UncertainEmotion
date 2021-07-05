@@ -101,14 +101,14 @@ class Validator(object):
                         num_workers=int(args.n_threads_train), 
                         drop_last = False)
 
-        predictions_file = 'N=5_student_round_3/new_annotation.pkl'
+        predictions_file = 'N=5_student_round_4/new_annotation.pkl'
         self.create_dir(predictions_file)
         if not os.path.exists(predictions_file):
             new_annotation = self.eval_epoch()
             pickle.dump(new_annotation, open(predictions_file, 'wb'))
         else:
             new_annotation= pickle.load(open(predictions_file, 'rb'))
-        matrix_file = "N=5_student_round_3/affinity_matrix.pkl"
+        matrix_file = "N=5_student_round_4/affinity_matrix.pkl"
         self.create_dir(matrix_file)
         if os.path.exists(matrix_file):
             affinity_matrix, tasks = pickle.load(open(matrix_file, 'rb'))
