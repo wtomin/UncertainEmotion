@@ -97,6 +97,7 @@ class dataset_Mixed_VA(DatasetBase):
                   'index': index,
                   'id':frames_ids,
                   'video': np.unique(video_names)[0],
+                  'fps':fps
                   }
         
         return sample
