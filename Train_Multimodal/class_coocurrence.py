@@ -65,10 +65,10 @@ if 'VAD' in args.auxillary:
 else:
     VAD_teacher = None
 EPS = 1e-8
-
+PRESET_VARS = PATH()
 class Validator(object):
     def __init__(self):
-        PRESET_VARS = PATH()
+        
         self._models = []
         # load checkpooints
         num_params = 0
@@ -99,13 +99,13 @@ class Validator(object):
                         self.train_datasets[task],
                         batch_size=1 ,
                         shuffle= False,
-                        num_workers=int(args.n_threads_train), 
+                        num_workers=int(args.n_threads_test), 
                         drop_last = False)
             self.val_dataloaders[task] = torch.utils.data.DataLoader(
                         self.val_datasets[task],
                         batch_size=1 ,
                         shuffle= False,
-                        num_workers=int(args.n_threads_train), 
+                        num_workers=int(args.n_threads_test), 
                         drop_last = False)
 
         predictions_file = 'N=5/new_annotation.pkl'
@@ -263,6 +263,7 @@ class Validator(object):
                 if i_model not in preds_dict.keys():
                     preds_dict[i_model] = []
                 preds_dict[i_model].append(outputs[task])
+
             # if i_batch>50:
             #     break 
         assert len(video_names) == len(frames_ids) and len(frames_ids) == len(paths)
