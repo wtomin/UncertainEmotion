@@ -59,17 +59,22 @@ class dataset_Mixed_EXPR(DatasetBase):
             video_name = video_name[:-6]
         audio_file = os.path.join(PRESET_VARS.audio_dir, '{}.wav'.format(video_name))
         assert os.path.exists(audio_file), "audio file {} does not exist".format(audio_file)
-        fps = np.unique(df['fps'].values)[0]
+        fps = np.unique(df['fps'].values)[0] +1 # to avoid too large offset
         offset = int(max(0, frames_ids[0]*self.sr *(1/fps)-self.window_size//2))
-        num_frames = int(frames_ids[-1]*self.sr *(1/fps) + self.window_size//2)
+        num_frames = int(frames_ids[-1]*self.sr *(1/fps) + self.window_size//2) - offset
+        if num_frames < self.window_size:
+            num_frames = self.window_size
         out, sr = read_audio(audio_file, offset=offset, num_frames=num_frames)
         out = out[0] # mono
         assert sr == self.sr, "audio sample rate must be {}".format(self.sr)
-        if not self.window_size < out.size(-1):
-            #skip this sample
+        if self.window_size > out.size(-1):
+            import pdb; pdb.set_trace()
             print("resample one sample because of the misalignment between video and audio data")
-            redindex = np.random.randint(len(self))
-            return self.__getitem__(redindex)
+            # resample this window by change the offset 
+            N = self.window_size - out.size(-1)
+            offset = max(0, offset - N)
+            out, sr = read_audio(audio_file, offset=offset, num_frames=self.window_size)
+            out = out[0] # mono
         audio_frames= []
         audio_length = []
         for i_video_frame in frames_ids:
