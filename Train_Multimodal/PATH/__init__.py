@@ -9,5 +9,6 @@ class PATH(object):
                             'EXPR':['Neutral','Anger','Disgust','Fear','Happiness','Sadness','Surprise'],
                             'VA':['valence', 'arousal']})
         self.audio_dir = 'audios'
+        self.face_dir = '../cropped_aligned'
 
 
