@@ -3,7 +3,6 @@ from .TemporalModel import *
 from .SpatialTemporalModel import SpatialTemporalModel
 from .models import ModelWrapper
 from utils.misc import get_MarbleNet_config, Identity, VAD_MarbleNet, mobile_facenet
-from nemo.collections.asr.modules import ConvASRDecoderClassification
 from copy import copy
 class ModelsFactory:
     def __init__(self):
