@@ -74,7 +74,6 @@ class dataset_Mixed_VA(DatasetBase):
             print("resample one sample because of the misalignment between video and audio data")
             # resample this window by change the offset 
             N = self.window_size - out.size(-1)
-            offset =  max(0, offset - N)
             out, sr = read_audio(audio_file, offset=offset, num_frames=self.window_size)
         audio_frames= []
         audio_length = []

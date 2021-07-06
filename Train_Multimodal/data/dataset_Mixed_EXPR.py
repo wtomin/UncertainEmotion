@@ -68,7 +68,6 @@ class dataset_Mixed_EXPR(DatasetBase):
         out = out[0] # mono
         assert sr == self.sr, "audio sample rate must be {}".format(self.sr)
         if self.window_size > out.size(-1):
-            import pdb; pdb.set_trace()
             print("resample one sample because of the misalignment between video and audio data")
             # resample this window by change the offset 
             N = self.window_size - out.size(-1)
