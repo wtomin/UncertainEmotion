@@ -4,7 +4,7 @@ import torch.nn as nn
 from collections import OrderedDict
 from torch.autograd import Variable
 from criterions.optim import Scheduler, Criterion, Optimizer, Metric
-from utils.validation import AU_metric, EXPR_metric, VA_metric, FA_metric, get_mean_sigma, get_distillation_loss
+from utils.validation import AU_metric, EXPR_metric, VA_metric, FA_metric, VAD_metric, get_mean_sigma, get_distillation_loss
 import os
 import numpy as np
 import torch.nn.functional as F
@@ -259,6 +259,9 @@ class ModelWrapper(object):
                 estimates['VA'] = np.stack([v, a], axis = -1)
             elif task == 'FA':
                 estimates['FA'] = output['FA'].cpu().numpy()
+            elif task == 'VAD':
+                estimates['VAD'] = F.softmax(output['VAD'].cpu(), dim=-1).numpy()
+                
         return estimates
     def optimize_parameters(self, FA_teacher = None, VAD_teacher = None):
         train_dict = dict()
@@ -358,7 +361,7 @@ class ModelWrapper(object):
     def get_current_errors(self):
         return self.loss_dict
     def get_metrics_per_task(self):
-        return {"AU": AU_metric, "EXPR": EXPR_metric, "VA": VA_metric, "FA": FA_metric}
+        return {"AU": AU_metric, "EXPR": EXPR_metric, "VA": VA_metric, "FA": FA_metric, 'VAD': VAD_metric}
     def get_current_LR(self):
         LR = []
         for param_group in self._optimizer.param_groups:

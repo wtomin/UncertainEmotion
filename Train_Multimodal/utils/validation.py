@@ -6,6 +6,10 @@ from torch.autograd import Variable
 from sklearn.metrics import f1_score, roc_auc_score
 from typing import Type, Any, Callable, Union, List, Optional
 EPS =  1e-8
+def sigmoid(x):
+    return np.exp(x)/(1+np.exp(x))
+def softmax(x, axis=-1):
+    return np.exp(x)/np.expand_dims(np.sum(np.exp(x), axis=axis), axis)
 def averaged_f1_score(input, target):
     N, label_size = input.shape
     f1s = []
