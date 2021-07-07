@@ -51,7 +51,7 @@ class BaseOptions():
         self._parser.add_argument('--print_freq_s', type=int, default= 10, help='print the training loss after every # seconds')
         self._parser.add_argument('--save_freq_s', type=int, default= 10,
             help= 'save the training losses to the summary writer every # seconds.')
-        self._parser.add_argument('--n_threads_train', default=8, type=int, help='# threads for loading data')
+        self._parser.add_argument('--n_threads_train', default=2, type=int, help='# threads for loading data')
         self._parser.add_argument('--n_threads_test', default=2, type=int, help='# threads for loading data')
         self._parser.add_argument('--name', type=str, default='experiment_1', help='name of the experiment. It decides where to store samples and models')
         self._parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
