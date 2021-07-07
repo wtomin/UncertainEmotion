@@ -183,6 +183,8 @@ class Validator(object):
         tasks = copy(args.tasks)
         if 'FA' in tasks:
             tasks.remove('FA')
+        if 'VAD' in tasks:
+            tasks.remove('VAD')
         total_probas = []
         for video in videos:
             video_df = track_preds[video]
