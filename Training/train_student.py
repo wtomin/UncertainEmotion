@@ -1,4 +1,5 @@
 import time
+import gc
 from options.train_options import TrainOptions
 from data.dataset_student import DatasetStudent
 from data.custom_dataset_data_loader import Multitask_DatasetDataLoader
@@ -103,6 +104,7 @@ class Trainer:
             if args.lr_policy == 'step':
                 self._model._LR_scheduler.step()
             val_dict = self._validate(i_epoch)
+            gc.collect()
             val_acc = sum([val_dict[t] for t in args.tasks if t !='FA'])
             cur_val_acc = sum([self._current_val_acc[t] for t in args.tasks if t !='FA'])
             if val_acc > cur_val_acc:
