@@ -10,6 +10,15 @@ def sigmoid(x):
     return np.exp(x)/(1+np.exp(x))
 def softmax(x, axis=-1):
     return np.exp(x)/np.expand_dims(np.sum(np.exp(x), axis=axis), axis)
+def invert_sigmoid(y):
+    y[y==0] = EPS
+    y[y==1] = 1-EPS
+    x = torch.log(torch.div(y, 1-y))
+    return x
+def invert_softmax(y):
+    y[y==0] = EPS
+    y[y==1] = 1-EPS
+    return torch.log(y)
 def averaged_f1_score(input, target):
     N, label_size = input.shape
     f1s = []

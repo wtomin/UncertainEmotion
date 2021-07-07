@@ -314,7 +314,7 @@ class ModelWrapper(object):
         else:
             raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
 
-    def optimize_parameters_kd(self, train_batch, FA_teacher = None): 
+    def optimize_parameters_kd(self, train_batch, FA_teacher = None, VAD_teacher = None): 
     # knowledge distillation with ensemble
         train_dict = {}
         loss = 0.
@@ -325,15 +325,19 @@ class ModelWrapper(object):
             tasks.remove("VAD")
         if self._is_train:
             input_image = Variable(train_batch['image'])
+            input_audio = Variable(train_batch['audio'])
+            input_audio_length = Variable(train_batch['audio_length'])
             EXPR_label = Variable(train_batch['EXPR_label'])
             AU_label = Variable(train_batch['AU_label'])
             VA_label = Variable(train_batch['VA_label'])
             if len(self._gpu_ids) > 0:
                 input_image = input_image.cuda()
+                input_audio = input_audio.cuda()
+                input_audio_length = input_audio_length.cuda()
                 EXPR_label =  EXPR_label.cuda()
                 AU_label = AU_label.cuda()
                 VA_label = VA_label.cuda()
-            output, _ = self._model(input_image)
+            output, _ = self._model(input_image, [input_audio, input_audio_length])
             teacher_probas = {"EXPR": EXPR_label, "AU": AU_label, "VA": VA_label}
             for task in tasks:
                 distillation_task = get_distillation_loss(task)
@@ -350,6 +354,14 @@ class ModelWrapper(object):
                 loss_FA = distillation_task(output['FA'].view(B*N, C), FA_label.view(B*N, -1).squeeze(-1))
                 train_dict['loss_FA'] = loss_FA.item() 
                 loss += self.normalize_lambda(self.lambdas_per_task)['FA'] * loss_FA
+            if VAD_teacher is not None and 'VAD' in self.tasks:
+                with torch.no_grad():
+                    VAD_label = VAD_teacher(input_audio.view((B*N, ) + input_audio.size()[2:]), input_audio_length.view(B*N))
+                B, N, C  = output['VAD'].size()
+                distillation_task = get_distillation_loss('VAD')
+                loss_VAD = distillation_task(output['VAD'].view(B*N, C), F.softmax(VAD_label.view(B*N, C), dim=-1))
+                train_dict['loss_VAD'] = loss_VAD.item()
+                loss += self.normalize_lambda(self.lambdas_per_task)['VAD'] * loss_VAD
             train_dict['loss'] = loss.item()
 
             self._optimizer.zero_grad()
