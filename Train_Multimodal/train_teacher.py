@@ -103,7 +103,13 @@ class Trainer:
         self._no_improve_n_epochs = dict([(t, 0) for t in args.tasks])
         for t in args.tasks:
             self.writer.add_scalar("Lambdas/{}".format(t), self._model.lambdas_per_task[t], 0)
-
+        if args.load_epoch !=0: # lr scheduler adjust
+            for _ in range(args.load_epoch):
+                if args.lr_policy == 'step':
+                    self._model._LR_scheduler.step()
+                elif args.lr_policy == 'cosine':
+                    for _ in range(len(self.training_dataloaders)):
+                        self._model._LR_scheduler.step()
         for i_epoch in range(args.load_epoch + 1, args.nepochs + 1):
             epoch_start_time = time.time()
             self._model.get_current_LR()
