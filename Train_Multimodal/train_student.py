@@ -225,8 +225,8 @@ class Trainer:
                 #store the predictions and labels
                 track_val_preds['preds'].append(outputs[task][task])
                 track_val_labels['labels'].append(wrapped_v_batch[task]['label'])
-                if i_val_batch == 100:
-                    break
+                # if i_val_batch == 100:
+                #     break
             # normalize errors
             for k in val_errors.keys():
                 val_errors[k] /= len(data_loader)
