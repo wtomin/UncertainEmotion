@@ -97,7 +97,7 @@ class Validator(object):
             if task in self.validation_dataloaders.keys():
                 data_loader = self.validation_dataloaders[task]
                 print("{}: {} images".format(task, len(data_loader)*args.batch_size * args.seq_len))
-        save_file = 'N=5/val_res.pkl'
+        save_file = 'N=1/val_res.pkl'
         if not os.path.exists(os.path.dirname(save_file)):
             os.makedirs(os.path.dirname(save_file))
         if not os.path.exists(save_file):
@@ -105,11 +105,11 @@ class Validator(object):
             pickle.dump([[single_model_metrics, ensemble_metrics], [track_val_preds, track_val_labels]], open(save_file, 'wb'))
         else:
             [single_model_metrics, ensemble_metrics], [track_val_preds, track_val_labels] = pickle.load(open(save_file, 'rb'))
-        NLLs, NLLs_TS, ECEs, ECEs_TS, BSs, BSs_TS = self._validate_uncertainty_metrics(track_val_preds, track_val_labels)
-        self._visualize_uncertainty_metrics(NLLs, NLLs_TS, "NLL")
-        self._visualize_uncertainty_metrics(ECEs, ECEs_TS, "ECE")
-        self._visualize_uncertainty_metrics(BSs, BSs_TS, "BrierScore")
-        self._visualize_task_metrics(single_model_metrics, ensemble_metrics)
+        # NLLs, NLLs_TS, ECEs, ECEs_TS, BSs, BSs_TS = self._validate_uncertainty_metrics(track_val_preds, track_val_labels)
+        # self._visualize_uncertainty_metrics(NLLs, NLLs_TS, "NLL")
+        # self._visualize_uncertainty_metrics(ECEs, ECEs_TS, "ECE")
+        # self._visualize_uncertainty_metrics(BSs, BSs_TS, "BrierScore")
+        # self._visualize_task_metrics(single_model_metrics, ensemble_metrics)
 
     def _visualize_uncertainty_metrics(self, metrics, metrcis_TS, title):
         fig, axes = plt.subplots(len(metrics.keys()), 1)
@@ -370,7 +370,7 @@ class Validator(object):
                             FA_labels[i_model].append(FA_teacher(wrapped_v_batch[task]['image'].squeeze(0).cuda()).unsqueeze(0).cpu().numpy())
                             FA_preds[i_model].append(outputs[task]['FA'])
                     if 'VAD' in args.tasks:
-                    VAD_metrics[i_model].append(errors['loss_VAD'])
+                        VAD_metrics[i_model].append(errors['loss_VAD'])
                         with torch.no_grad():
                             audio_input = wrapped_v_batch[task]['audio'].squeeze(0).cuda()
                             audio_length = wrapped_v_batch[task]['audio_length'].squeeze(0).cuda()
