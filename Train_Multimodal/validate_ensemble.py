@@ -97,7 +97,7 @@ class Validator(object):
             if task in self.validation_dataloaders.keys():
                 data_loader = self.validation_dataloaders[task]
                 print("{}: {} images".format(task, len(data_loader)*args.batch_size * args.seq_len))
-        save_file = 'N=1/val_res.pkl'
+        save_file = 'N=5_student_round_1/val_res.pkl'
         if not os.path.exists(os.path.dirname(save_file)):
             os.makedirs(os.path.dirname(save_file))
         if not os.path.exists(save_file):
@@ -335,6 +335,7 @@ class Validator(object):
         VAD_labels = {}
         track_val_preds = {}
         track_val_labels = {}
+        total_emotion_record = {}
         for task in tasks:
             track_val_preds[task] = {}
             track_val_labels[task] = {}
@@ -387,6 +388,7 @@ class Validator(object):
             # evalute each single model for task 
             preds_total = []
             record_metrics_single[task] = []
+            eval_res_record = []
             for i_model in track_val_preds[task].keys():
                 preds, labels = track_val_preds[task][i_model], track_val_labels[task][i_model]
                 B, N = preds.shape[:2]
@@ -395,6 +397,7 @@ class Validator(object):
                 eval_items, eval_res = metric_func(estimates[task].reshape(B*N, -1).squeeze(), copy(labels.reshape(B*N, -1).squeeze()))
                 print("Model {} {} eval res: {}, eval 0: {}, eval 1 {}".format(i_model, task, eval_res,
                     eval_items[0], eval_items[1]))
+                eval_res_record.append(eval_res)
                 if task !='VA':
                     record_metrics_single[task].append(eval_res)
                 else:
@@ -405,6 +408,8 @@ class Validator(object):
                     record_metrics_single['Valence'].append(eval_items[0])
                     record_metrics_single['Arousal'].append(eval_items[1])
                 preds_total.append(preds)
+            print("{} {} models eval res mean: {}, std: {}".format(task, len(track_val_preds[task].keys()), np.mean(eval_res_record), np.std(eval_res_record)))
+            total_emotion_record[task] = eval_res_record
 
             # evaluate ensemble model for task (average the output probabilities)
             probas = []
@@ -422,6 +427,10 @@ class Validator(object):
             else:
                 record_metrics_ensemble['Valence'] = eval_items[0]
                 record_metrics_ensemble['Arousal'] = eval_items[1]
+        #sum over tasks
+        single_total_emotion_metrics = [np.sum([total_emotion_record[t][i] for t in tasks]) for i in range(len(total_emotion_record[task]))]
+        print("Single Total Emotion mean: {}, std: {}".format(np.mean(single_total_emotion_metrics), np.std(single_total_emotion_metrics)))
+
         if 'FA' in args.tasks:
             for i_model in FA_metrics.keys():
                 FA_metrics[i_model] = np.mean(FA_metrics[i_model])
