@@ -109,12 +109,11 @@ class Test_dataset(object):
         seq_len = self._seq_len
         self.sample_seqs = []
         N = seq_len
-        data = copy(self._data) # dataframe are easier for indexing
+        data = {'path': self._data['path'], 'frames_ids':self._data['frames_ids'], 'fps': self._data['fps'], 'video': self._data['video']}
         self._label_size = len(PRESET_VARS.Aff_wild2.categories[self.task]) if self.task !='EXPR' else 1
         num_images = self._data['label'].shape[0]
         data.update(dict([(str(i), np.zeros((num_images,))) \
             for i in range(self._label_size)]))
-        self._data = pd.DataFrame.from_dict(data)
         for i in range(len(self._data['path'])//N + 1):
             start, end = i*N, i*N + seq_len
             if end >= len(self._data):

@@ -161,7 +161,6 @@ class Tester(object):
                     num_workers=int(args.n_threads_test),
                     drop_last=False)
                     track = self.test_one_video(model, test_dataloader, task = task)
-                    
                     torch.cuda.empty_cache() 
                     outputs_record[i_model][task][video] = track['outputs']
                     estimates_record[i_model][task][video] = track['estimates']
