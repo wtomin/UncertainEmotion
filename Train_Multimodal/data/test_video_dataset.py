@@ -114,6 +114,7 @@ class Test_dataset(object):
         num_images = self._data['label'].shape[0]
         data.update(dict([(str(i), np.zeros((num_images,))) \
             for i in range(self._label_size)]))
+        self._data = pd.DataFrame.from_dict(data)
         for i in range(len(self._data['path'])//N + 1):
             start, end = i*N, i*N + seq_len
             if end >= len(self._data):
