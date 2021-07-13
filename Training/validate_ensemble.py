@@ -99,11 +99,67 @@ class Validator(object):
             pickle.dump([[single_model_metrics, ensemble_metrics], [track_val_preds, track_val_labels]], open(save_file, 'wb'))
         else:
             [single_model_metrics, ensemble_metrics], [track_val_preds, track_val_labels] = pickle.load(open(save_file, 'rb'))
-        NLLs, NLLs_TS, ECEs, ECEs_TS, BSs, BSs_TS = self._validate_uncertainty_metrics(track_val_preds, track_val_labels)
-        self._visualize_uncertainty_metrics(NLLs, NLLs_TS, "NLL")
-        self._visualize_uncertainty_metrics(ECEs, ECEs_TS, "ECE")
-        self._visualize_uncertainty_metrics(BSs, BSs_TS, "BrierScore")
-        self._visualize_task_metrics(single_model_metrics, ensemble_metrics)
+        NLLs, NLLs_TS, BSs, BSs_TS = self._validate_uncertainty_metrics(track_val_preds, track_val_labels)
+        self.print_func(NLLs, NLLs_TS, BSs, BSs_TS, tasks=list(track_val_preds.keys()))
+        #self._visualize_uncertainty_metrics(NLLs, NLLs_TS, "NLL")
+        #self._visualize_uncertainty_metrics(ECEs, ECEs_TS, "ECE")
+        #self._visualize_uncertainty_metrics(BSs, BSs_TS, "BrierScore")
+        #self._visualize_task_metrics(single_model_metrics, ensemble_metrics)
+    def print_func(self, NLLs, NLLs_TS, BSs, BSs_TS, tasks):
+        output =""
+        tasks.remove('VA')
+        for task in tasks:
+            output += "[{}]:\n".format(task)
+            output += "########### NLL ###############\n"
+            for i in range(5):
+               score = NLLs[task][i]
+               output +='{:.3f},'.format(score)
+            output +='\n ens: {:.3f}\n TS:'.format(NLLs[task]['ens'])
+            for i in range(5):
+               score = NLLs_TS[task][i]
+               output +='{:.3f},'.format(score)
+            output +='\n######### brier_score ########\n'
+            for i in range(5):
+               score = BSs[task][i]
+               output +='{:.3f},'.format(score)
+            output +='\n ens: {:.3f}\n TS:'.format(BSs[task]['ens'])
+            for i in range(5):
+               score = BSs_TS[task][i]
+               output +='{:.3f},'.format(score)
+            output +='\n'
+        output += 'VA\n'
+        v_output = "########### NLL ###############\n"
+        a_output = "########### NLL ###############\n"
+        for i in range(5):
+            v_score, a_score = NLLs['VA'][i]
+            v_output +='{:.3f},'.format(v_score)
+            a_output +='{:.3f},'.format(a_score)
+        v_score, a_score = NLLs['VA']['ens']
+        v_output+='\n ens: {:.3f}\n TS:'.format(v_score)
+        a_output += '\n ens: {:.3f}\n TS:'.format(a_score)
+        for i in range(5):
+            v_score, a_score = NLLs_TS['VA'][i]
+            v_output += "{:.3f}, ".format(v_score)
+            a_output +='{:.3f}, '.format(a_score)
+        v_output +='\n######### brier_score ########\n'
+        a_output +='\n######### brier_score ########\n'
+        for i in range(5):
+            v_score, a_score = BSs['VA'][i]
+            v_output +='{:.3f},'.format(v_score)
+            a_output +='{:.3f},'.format(a_score)
+        v_score, a_score = BSs['VA']['ens']
+        v_output+='\n ens: {:.3f}\n TS:'.format(v_score)
+        a_output += '\n ens: {:.3f}\n TS:'.format(a_score)
+        for i in range(5):
+            v_score, a_score = BSs_TS['VA'][i]
+            v_output +='{:.3f},'.format(v_score)
+            a_output +='{:.3f},'.format(a_score)
+
+        output +="\nvalence:\n"+v_output+'\n'
+        output +="\narousal:\n"+a_output
+        print(output)
+
+
     def _visualize_uncertainty_metrics(self, metrics, metrcis_TS, title):
         fig, axes = plt.subplots(len(metrics.keys()), 1)
         for i, task in enumerate(metrics.keys()):
@@ -152,13 +208,13 @@ class Validator(object):
 
     def _validate_uncertainty_metrics(self, track_val_preds, track_val_labels):
         tasks = list(track_val_labels.keys())
-        if 'VA' in tasks:
-            tasks.remove('VA') # do not compute NLL or ECE for valence and arousal
+        # if 'VA' in tasks:
+        #     tasks.remove('VA') # do not compute NLL or ECE for valence and arousal
         optimal_Ts = {}
         NLLs_TS = {}
         NLLs = {}
-        ECEs_TS = {}
-        ECEs = {}
+        # ECEs_TS = {}
+        # ECEs = {}
         BSs_TS = {}
         BSs = {}
         for task in tasks:
@@ -168,8 +224,8 @@ class Validator(object):
             optimal_Ts[task] = {}
             NLLs[task] = {}
             NLLs_TS[task] = {}
-            ECEs_TS[task] = {}
-            ECEs[task] = {}
+            # ECEs_TS[task] = {}
+            # ECEs[task] = {}
             BSs[task] = {}
             BSs_TS[task] = {}
             for i_model in tqdm(preds_dict.keys()):
@@ -182,44 +238,92 @@ class Validator(object):
                 mask = np.array([True]*N)
                 indexes = np.random.choice(np.arange(N), size = N//2, replace=False)
                 mask[indexes] = False
+                # optimize temperature on a randomly selected subset using mask
                 T = self.optimize_temperature(copy(preds[mask]), copy(labels[mask]), task)
                 optimal_Ts[task][i_model] = T
+                #nll compute
                 NLLs_TS[task][i_model] = self.get_NLL(
                     self.logits_2_probas(copy(preds[~mask]), task, T = T), 
                     copy(labels[~mask]), task)
                 NLLs[task][i_model] = self.get_NLL(
                     probas, labels, task)
-                ECEs_TS[task][i_model] = self.get_ECE(
-                    self.logits_2_probas(copy(preds[~mask]), task, T = T), 
-                    copy(labels[~mask]))
-                ECEs[task][i_model] = self.get_ECE(
-                    copy(probas), 
-                    copy(labels))
-                C = probas.shape[-1]
-                BSs_TS[task][i_model] = np.mean([
-                    brier_score_loss(y_true = self.to_onehot_labels(copy(labels[~mask]), task=task)[..., i_c],
-                    y_prob = self.logits_2_probas(copy(preds[~mask]), task, T = T)[..., i_c]) 
+                if task!='VA':
+                    C = probas.shape[-1]
+                    BSs_TS[task][i_model] = np.mean([
+                        brier_score_loss(y_true = self.to_onehot_labels(copy(labels[~mask]), task=task)[..., i_c],
+                        y_prob = self.logits_2_probas(copy(preds[~mask]), task, T = T)[..., i_c]) 
+                        for i_c in range(C)])
+                    BSs[task][i_model] = np.mean([
+                        brier_score_loss(y_true=self.to_onehot_labels(copy(labels), task = task)[..., i_c],
+                        y_prob = copy(probas)[..., i_c]) for i_c in range(C)])
+                else:
+                    C = 20
+                    v_score = np.mean([
+                    brier_score_loss(y_true = self.to_onehot_labels(copy(labels[~mask][:, 0]), task=task, num_classes=20)[..., i_c],
+                    y_prob = self.logits_2_probas(copy(preds[~mask][:, :20]), task, T = T[0])[..., i_c]) 
                     for i_c in range(C)])
-                BSs[task][i_model] = np.mean([
-                    brier_score_loss(y_true=self.to_onehot_labels(copy(labels), task = task)[..., i_c],
-                    y_prob = copy(probas)[..., i_c]) for i_c in range(C)])
+                    a_score = np.mean([
+                    brier_score_loss(y_true = self.to_onehot_labels(copy(labels[~mask][:, 1]), task=task, num_classes=20)[..., i_c],
+                    y_prob = self.logits_2_probas(copy(preds[~mask][:, 20:]), task, T = T[1])[..., i_c]) 
+                    for i_c in range(C)])
+                    BSs_TS[task][i_model] = [v_score, a_score]
+                    v_score = np.mean([
+                    brier_score_loss(y_true = self.to_onehot_labels(copy(labels[~mask][:, 0]), task=task, num_classes=20)[..., i_c],
+                    y_prob = self.logits_2_probas(copy(preds[~mask][:, :20]), task)[..., i_c]) 
+                    for i_c in range(C)])
+                    a_score = np.mean([
+                    brier_score_loss(y_true = self.to_onehot_labels(copy(labels[~mask][:, 1]), task=task, num_classes=20)[..., i_c],
+                    y_prob = self.logits_2_probas(copy(preds[~mask][:, 20:]), task)[..., i_c]) 
+                    for i_c in range(C)])
+                    BSs[task][i_model] = [v_score, a_score]
+
             probas_total = np.stack(probas_total, axis=0).mean(0)
             NLLs[task]['ens'] = self.get_NLL(probas_total, labels, task)
-            ECEs[task]['ens'] = self.get_ECE(probas_total, labels)
-            BSs[task]['ens'] = np.mean([
-                brier_score_loss(y_true=self.to_onehot_labels(labels, task=task)[..., i_c],
-                y_prob = probas_total[..., i_c]) for i_c in range(C)])
+            if task !='VA':
+                BSs[task]['ens'] = np.mean([
+                    brier_score_loss(y_true=self.to_onehot_labels(labels, task=task)[..., i_c],
+                    y_prob = probas_total[..., i_c]) for i_c in range(C)])
+            else:
+                BSs[task]['ens'] = [np.mean([
+                    brier_score_loss(y_true=self.to_onehot_labels(labels[:, 0], task=task, num_classes=20)[..., i_c],
+                    y_prob = probas_total[:, :20][..., i_c]) for i_c in range(C)]),
+                    np.mean([
+                    brier_score_loss(y_true=self.to_onehot_labels(labels[:, 1], task=task, num_classes=20)[..., i_c],
+                    y_prob = probas_total[:, 20:][..., i_c]) for i_c in range(C)]),
+                ]
         for task in optimal_Ts.keys():
             output = "Task: {}".format(task)
             output += " ".join(['{}: {}'.format(i_model, optimal_Ts[task][i_model]) for i_model in optimal_Ts[task].keys()])
             print(output)
-        return NLLs, NLLs_TS, ECEs, ECEs_TS, BSs, BSs_TS
+        return NLLs, NLLs_TS, BSs, BSs_TS
+        #return NLLs, NLLs_TS, ECEs, ECEs_TS, BSs, BSs_TS
     def to_onehot_labels(self, labels, num_classes = 7, task= 'EXPR'):
         if task == 'EXPR':
             onehot = np.zeros((len(labels),num_classes))
             onehot[np.arange(len(labels)),labels] = 1
         elif task == 'AU':
             onehot = labels
+        elif task == 'VA':
+            edges = np.linspace(-1, 1 , 21)
+            if num_classes==40:
+                v, a = labels[::, 0], labels[::, 1]
+                dig_v = np.digitize(v, edges,right=True)
+                dig_v[dig_v == 20] = 20 - 1
+                dig_a = np.digitize(a, edges,right=True)
+                dig_a[dig_a == 20] = 20 -1
+                num_classes = 20
+                onehot_v = np.zeros((len(labels), num_classes))
+                onehot_v[np.arange(len(labels), dig_v)] = 1
+                onehot_a= np.zeros((len(labels), num_classes))
+                onehot_a[np.arange(len(labels), dig_a)] = 1
+                labels = np.stack([onehot_v, onehot_a], axis=-1)
+                onehot = labels
+            elif num_classes == 20:
+                dig = np.digitize(labels, edges,right=True)
+                dig[dig==20] =19
+                onehot = np.zeros((len(labels), num_classes))
+                onehot[np.arange(len(labels)), dig] = 1
+
         return onehot
 
     def get_ECE(self, probas, labels, nbins= 10):
@@ -229,46 +333,12 @@ class Validator(object):
                 return_bins = True)
         else:
             N = labels.shape[1]
-            # ece_scores = []
-            # acc_scores = []
-            # conf_scores = []
             probas = copy(probas).reshape(-1,)
             labels = copy(labels).reshape(-1,)
-            # for i in range(N):
-            #     p, l = probas[:, i], labels[:, i]
-            #     ece_score, acc_hist, conf_hist = ece.measure(p, l, metric='ece', 
-            #     return_bins = True)
-            #     ece_scores.append(ece_score)
-            #     acc_scores.append(acc_hist)
-            #     conf_scores.append(conf_hist)
-
-            # ece_score = np.mean(ece_scores)
-            # acc_hist = np.mean(np.stack(acc_scores, axis=0), axis=0)
-            # conf_hist = np.mean(np.stack(conf_scores, axis=0), axis=0)
             ece_score, acc_hist, conf_hist = ece.measure(probas, labels, metric='ece', 
                 return_bins = True)
         return ece_score, acc_hist, conf_hist
-    # def get_ECE_AU(self, probas, labels, nbins=10, thresholds = [0.12, 0.06, 0.16, 0.26, 0.40, 0.35,
-    #     0.25, 0.03, 0.03, 0.03, 0.63, 0.08]):
-    #     N =  labels.shape[1]
-    #     ece_score = []
-    #     for i in range(N):
-    #         p, l, t = probas[:, i], labels[:, i], thresholds[i]
-    #         bins = np.linspace(0., 1., nbins +1)
-    #         p_index = np.digitize(p, bins) -1
-    #         p_index[p_index == len(bins)] = len(bins) - 1
-    #         bins_indexes = np.unique(p_index)
-    #         score = 0
-    #         for i_b in bins_indexes:
-    #             mask = p_index == i_b
-    #             preds = (p[mask] >t).astype(np.float)
-    #             acc = sum(preds == l[mask])/ len(preds)
-    #             avg_p = p[mask].mean()
-    #             diff = np.abs(avg_p - acc)
-    #             num = sum(mask)
-    #             score+= num/len(p_index) * diff
-    #         ece_score.append(score)
-    #     return np.mean(ece_score)
+
 
     def optimize_temperature(self, logits, labels, task):
         if task == 'EXPR':
@@ -280,6 +350,18 @@ class Validator(object):
             for i in range(labels.shape[1]):
                 temperature = TemperatureScaling()
                 temperature.fit(self.logits_2_probas(logits[:, i], task), labels[:, i])
+                t = 1/temperature.temperature[0]
+                ts.append(t)
+            t = np.array(ts)
+        elif task == 'VA':
+            ts = []
+            edges = np.linspace(-1, 1, 20)
+            for i in range(labels.shape[1]):
+                temperature = TemperatureScaling()
+                l = labels[:, i]
+                dl = np.digitize(l, edges,right=True)
+                dl[dl==20] = 19
+                temperature.fit(self.logits_2_probas(logits[:, i*20:(i+1)*20], task), dl)
                 t = 1/temperature.temperature[0]
                 ts.append(t)
             t = np.array(ts)
@@ -409,15 +491,28 @@ class Validator(object):
         return [record_metrics_single, record_metrics_ensemble], [track_val_preds, track_val_labels]
 
 
-    def logits_2_probas(self, preds, task, T=1):
-        preds = preds/T
+    def logits_2_probas(self, preds, task, T=None):
         if task == 'EXPR':
+            if T is None:
+                T = 1
+            preds = preds/T
             p = softmax(preds, axis=-1)
         elif task =='AU':
+            if T is None:
+                T = 1
+            preds = preds/T
             p = sigmoid(preds)
         elif task =='VA':
-            p = [softmax(preds[..., :20], axis=-1), softmax(preds[..., 20:], axis=-1)]
-            p = np.concatenate(p, axis=-1)
+            if preds.shape[-1]==20:
+                if T is None:
+                    T = 1
+                p = softmax(preds/T, axis=-1)
+            elif preds.shape[-1]==40:  
+                if T is None:
+                    T = [1,1]
+                assert len(T) == 2
+                p = [softmax(preds[..., :20]/T[0], axis=-1), softmax(preds[..., 20:]/T[1], axis=-1)]
+                p = np.concatenate(p, axis=-1)
         return p
     def probas_2_estimates(self, probas, task):
         if task == 'EXPR':
@@ -433,7 +528,6 @@ class Validator(object):
         return est
 
     def get_NLL(self, probas, labels, task):
-    
         if task == 'AU':
             nll = -(labels*np.log(probas + EPS) + (1-labels)*np.log(1-probas + EPS))
             return np.mean(nll)
@@ -442,10 +536,15 @@ class Validator(object):
             return nll.mean()
         elif task == 'VA':
             edges = np.linspace(-1, 1, 20)
-            labels = np.digitize(labels, edges, right=True)
-            nll = - np.log(probas[labels] + EPS)
-            return nll.mean()
-
+            nlls = []
+            for i in range(2):
+                l = labels[:, i]
+                dl = np.digitize(l, edges,right=True)
+                dl[dl==20] = 19
+                nll = - np.log(probas[:, i*20 :(i+1)*20][np.arange(len(dl)), dl] + EPS)
+                nlls.append(nll.mean())
+            return nlls
+                
     def get_proba_estimates(self, preds, task, T):
         if task == 'AU':
             z = preds/T
