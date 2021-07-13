@@ -86,7 +86,7 @@ class Tester(object):
 
         estimates, uncertainties = self._test()
         annt_img, results = self.print_results(estimates, uncertainties)
-        self.plot_results(annt_img, results)
+        self.plot_results(img, results)
 
     def plot_results(self, annt_img, results):
         fig, axes = plt.subplots(1, 2, figsize=(18, 12))
@@ -109,7 +109,7 @@ class Tester(object):
         axes[1].set_xlabel("Emotion Uncertainty")
 
         #plt.figtext(0.7,0.03,"Emotion Uncertainty", va="center", ha="center")
-        plt.figtext(0.2,0.1,"Landmarks", va="center", ha="center")
+        plt.figtext(0.2,0.1,"Facial Image", va="center", ha="center")
         plt.tight_layout()
         plt.savefig('inference_img.pdf')
         plt.show()
