@@ -32,7 +32,7 @@ class BaseOptions():
         ########### Ablation study: w/o auxillary task; Transformer or RNN #########
         self._parser.add_argument('--TModel', type=str, default='GRU',
                             help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
-        self._parser.add_argument('--auxillary', nargs="+", help=
+        self._parser.add_argument('--auxillary', nargs="+",  default = [], help=
             "auxillary tasks: FA, VAD.")
         ########### Audio ######
         self._parser.add_argument('--window_size', type=float, default=0.63, help="The audio frame will contain the audio signals in one window")
