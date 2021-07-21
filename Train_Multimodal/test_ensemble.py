@@ -61,7 +61,7 @@ else:
     VAD_teacher = None
 EPS = 1e-8
 PRESET_VARS = PATH()
-save_dir = 'single_preds_student_round_2_exp_5'
+save_dir = 'ensemble_preds_student_round_1'
 class Tester(object):
     def __init__(self):
         self.save_dir = save_dir
@@ -160,17 +160,20 @@ class Tester(object):
                     shuffle= False,
                     num_workers=int(args.n_threads_test),
                     drop_last=False)
-                    track = self.test_one_video(model, test_dataloader, task = task)
-                    torch.cuda.empty_cache() 
-                    outputs_record[i_model][task][video] = track['outputs']
-                    estimates_record[i_model][task][video] = track['estimates']
-                    frames_ids_record[i_model][task][video] = track['frames_ids']
-                    print("Model ID {} Task {} Current {}/{}".format(i_model, task, i_video, len(task_data_file.keys())))
                     save_path = '{}/{}/{}.txt'.format(i_model, task, video)
-                    self.save_to_file(track['frames_ids'], track['estimates'], save_path, task=task)
+                    
+                    if not os.path.exists(os.path.join(save_dir, save_path)):
+                        track = self.test_one_video(model, test_dataloader, task = task)
+                        torch.cuda.empty_cache() 
+                        outputs_record[i_model][task][video] = track['outputs']
+                        estimates_record[i_model][task][video] = track['estimates']
+                        frames_ids_record[i_model][task][video] = track['frames_ids']
+                        print("Model ID {} Task {} Current {}/{}".format(i_model, task, i_video, len(task_data_file.keys())))
+                        save_path = '{}/{}/{}.txt'.format(i_model, task, video)
+                        self.save_to_file(track['frames_ids'], track['estimates'], save_path, task=task)
         
         #merge the raw outputs 
-        for task in tasks:
+        for task in outputs_record[0].keys():
             for video in outputs_record[0][task].keys():
                 preds = []
                 for i in range(len(outputs_record.keys())):

@@ -181,12 +181,12 @@ class ModelWrapper(object):
         self._is_train = False
 
     def forward(self, return_estimates=False, input_tasks = None,
-        FA_teacher = None, VAD_teacher = None, hiddens = None):
+        FA_teacher = None, VAD_teacher = None, hiddens = None, MC_dropout=False):
         # validation the eval_task
         val_dict = dict() 
         out_dict = dict()
         loss = 0.
-        if not self._is_train:
+        if (not self._is_train) or MC_dropout:
             tasks = copy(self.tasks) if input_tasks is None else input_tasks
             if 'FA' in tasks:
                 tasks.remove('FA')
