@@ -1,18 +1,40 @@
+# Efficient Multitask Emotion Network (EMENet)
 
-# The Backbone
+This is a repository for our solution for the [ABAW2021 Challenge](https://ibug.doc.ic.ac.uk/resources/iccv-2021-2nd-abaw/). Our team name is NISL-2021.
 
-The backbone is a facial landmark detection model from this [repo](https://github.com/cunjian/pytorch_face_landmark). The MobileNet model architecture is defined in this [script](https://github.com/cunjian/pytorch_face_landmark/blob/master/models/mobilefacenet.py), and the checkpoint is downloaded [here](https://github.com/cunjian/pytorch_face_landmark/blob/master/checkpoint/mobilefacenet_model_best.pth.tar).
+We trained unified models to predict three types of emotion labels, i.e., 12 facial action units, 7 basic emotions, valence and arousal. The 12 action units are AU1, AU2, AU4, AU6, AU7, AU10, AU12, AU15, AU23, AU24, AU25, AU26. The seven basic emotions are neutral, anger, disgust, fear, happiness, sadness and surprise. Valence and arousal are both continuous values in the range [-1, 1].
 
-# The algorithm
+Our models have efficient CNN-RNN architectures. We list the number of parameters of our visual model and visual-audio model as follows:
 
-"Face alignment" is an auxillary task, which we keep it during training, but won't put too much attention on it. It means that we don't need uncertainty estimation for this task.
+| Model | # Param. | FLOPs|
+| --- | ---| ---|
+|EMENet-V| 1.68M| 228M|
+|EMENet-VA|1.91M | 234M| 
 
-The dataset we use is only Aff-wild2 dataset, since it is large enough.
+Note that the FLOPs are the number of floating-point operations when the visual input is one RGB image (112x112) and audio input is one mel spectrogram (64x64). Our model can accept a sequence of facial images and a sequence of spectrograms.
 
-The emotion tasks (EXPR, FAU, VA) all need to predict the actual prediction and the uncertainty prediction, but this is for the student model. 
+We not only trained single models, but also trained deep ensembles. A deep ensemble consists of several models with the same architecture, but different random initialization. It has been proved to be robust in uncertainty estimation ([Ovidia et al., 2019](https://arxiv.org/abs/1906.02530)). We applied deep ensembles for emotion uncertainty estimation.
 
-# The architecture
+# Requirements
 
-I will choose MobileFaceNet as the backbone, and feed the feature from the last conv layer to four Transformers or four RNNs. We can compare their efficiency and performance.
+1. Python3.9
+2. CUDA 11.0
+3. Install other requirements using
 
-To be specific, the backbone is a CNN model, 
+```
+pip install requirements.txt
+```
+4. When using audio-visual models, [NeMo](https://github.com/NVIDIA/NeMo) is required. Install it using:
+
+```
+apt-get update && apt-get install -y libsndfile1 ffmpeg
+pip install Cython
+pip install nemo_toolkit['all']
+```
+
+# Usage
+
+# Cite
+
+
+
