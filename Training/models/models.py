@@ -4,11 +4,12 @@ import torch.nn as nn
 from collections import OrderedDict
 from torch.autograd import Variable
 from criterions.optim import Scheduler, Criterion, Optimizer, Metric
-from utils.validation import AU_metric, EXPR_metric, VA_metric, FA_metric, get_mean_sigma
+from utils.validation import AU_metric, EXPR_metric, VA_metric, FA_metric, get_mean_sigma, get_distillation_loss
 import os
 import numpy as np
 import torch.nn.functional as F
 from copy import deepcopy, copy
+from utils import map_location
 
 class ModelWrapper(object):
     def __init__(self, STModel, name, tasks, checkpoints_dir, 
@@ -18,8 +19,7 @@ class ModelWrapper(object):
         AU_criterion, EXPR_criterion, VA_criterion, FA_criterion,
         lambda_AU, lambda_EXPR, lambda_VA, lambda_FA,
         is_train = True,
-        cuda = True,
-        uncertainty = True):
+        cuda = True,):
 
         self._name = name
         self._model = STModel
@@ -38,7 +38,6 @@ class ModelWrapper(object):
         self.optimizer = optimizer
         self.wd = wd
         self.cuda = cuda
-        self.uncertainty = uncertainty
         self._gpu_ids = gpu_ids
         self._save_dir = os.path.join(self.checkpoints_dir, self.name)
         self._Tensor = torch.cuda.FloatTensor if self.cuda else torch.Tensor
@@ -46,23 +45,24 @@ class ModelWrapper(object):
         #
         categories = PATH().Aff_wild2.categories
         self._output_size_per_task = {'AU': len(categories['AU']), 'EXPR': len(categories['EXPR']), 
-        'VA': len(categories['VA'])*2 if uncertainty else len(categories['VA']),
+        'VA': len(categories['VA'])*20 ,
         'FA': 68*2}
         self.categories = categories
 
         self._criterions_per_task = {'AU': AU_criterion, 
         'EXPR': EXPR_criterion, 'VA': VA_criterion, 'FA': FA_criterion}
-        self.lambdas_per_task = {'AU': lambda_AU, 'EXPR': lambda_EXPR, 
-        'VA': lambda_VA, 'FA': lambda_FA}
-        # self._metrics_per_task = {'AU': AU_metric, 'EXPR': EXPR_metric,
-        # 'VA':VA_metric, 'FA': FA_metric}
+        self.lambda_AU = lambda_AU
+        self.lambda_EXPR = lambda_EXPR
+        self.lambda_VA = lambda_VA
+        self.lambda_FA = lambda_FA
 
         # init train variables
         if self._is_train:
             self._model.train()
-            self._init_train_vars()
         else:
             self._model.eval()
+
+        self._init_train_vars()
 
         # load networks and optimizers
         if load_epoch > 0:
@@ -80,7 +80,22 @@ class ModelWrapper(object):
     @property
     def is_train(self):
         return self._is_train
+    @property
+    def lambdas_per_task(self):
+        lambda_dict =  {'AU': self.lambda_AU, 'EXPR': self.lambda_EXPR, 
+        'VA': self.lambda_VA, 'FA': self.lambda_FA}
+        return lambda_dict
 
+    def update_lambda(self, no_improve_n_epochs):
+        for key in no_improve_n_epochs.keys():
+            n_epochs = no_improve_n_epochs[key]
+            assert isinstance(n_epochs, int), "number of epochs should be an integer"
+            if n_epochs > 1:
+                setattr(self, 'lambda_{}'.format(key), np.log2(n_epochs))
+    def normalize_lambda(self, lambda_dict):
+        summation = sum([lambda_dict[key] for key in lambda_dict.keys()])
+        return dict([(k, lambda_dict[k]/summation) for k in lambda_dict.keys()])
+    
     def load(self):
         load_epoch = self.load_epoch
         # load feature extractor
@@ -120,9 +135,15 @@ class ModelWrapper(object):
     def _init_losses(self):
         # get the training loss
         criterions = {}
-        criterions['AU'] = Criterion().get(self._criterions_per_task['AU'], len(self.categories['AU']))
-        criterions['EXPR'] = Criterion().get(self._criterions_per_task['EXPR'], len(self.categories['EXPR']))
-        criterions['VA'] = Criterion().get(self._criterions_per_task['VA'], len(self.categories['VA']))
+        pos_weight = torch.tensor([23/3, 47/3, 21/4, 37/13, 3/2, 13/7, 3, 97/3, 97/3, 97/3, 37/63, 23/2])
+        if self.cuda:
+            pos_weight = pos_weight.cuda()
+        criterions['AU'] = Criterion().get(self._criterions_per_task['AU'], len(self.categories['AU']), pos_weight = pos_weight)
+        weight = torch.tensor([2.5, 25, 40, 33, 4, 5.88, 12.5])
+        if self.cuda:
+            weight = weight.cuda()
+        criterions['EXPR'] = Criterion().get(self._criterions_per_task['EXPR'], len(self.categories['EXPR']), weight = weight)
+        criterions['VA'] = Criterion().get(self._criterions_per_task['VA'], len(self.categories['VA']) * 20)
         criterions['FA'] = Criterion().get(self._criterions_per_task['FA'], 68*2)
         self._criterions_per_task = criterions
 
@@ -174,7 +195,7 @@ class ModelWrapper(object):
                 B, N, C  = output[t].size()
                 loss_task = criterion_task(output[t].view(B*N, C), label.view(B*N, -1).squeeze(-1)) 
                 val_dict['loss_'+t] = loss_task.item()
-                loss += self.lambdas_per_task[t] * loss_task
+                loss += self.normalize_lambda(self.lambdas_per_task)[t] * loss_task
                 if FA_teacher is not None and 'FA' in self.tasks:
                     with torch.no_grad():
                         FA_label = FA_teacher(input_image.view((B*N, ) + input_image.size()[2:]))
@@ -183,14 +204,12 @@ class ModelWrapper(object):
                     if 'loss_FA' not in val_dict.keys():
                         val_dict['loss_FA'] = []
                     val_dict['loss_FA'].append(loss_FA.item() * (1/len(tasks)))
-                    loss += self.lambdas_per_task['FA'] * (1/len(tasks)) * loss_FA
+                    loss += self.normalize_lambda(self.lambdas_per_task)['FA'] * (1/len(tasks)) * loss_FA
 
                 if return_estimates:
-                    for task in self.tasks:
-                        out_dict[t] = self._format_estimates(output)
+                    out_dict[t] = self._format_estimates(output)
                 else:
-                    for task in self.tasks:
-                        out_dict[t] = dict([(key, output[key].cpu().numpy()) for key in output.keys()])
+                    out_dict[t] = dict([(key, output[key].cpu().numpy()) for key in output.keys()])
             val_dict['loss'] = loss.item()
         else:
             raise ValueError("Do not call forward function in training mode. USE optimize_parameters() INSTEAD.")
@@ -207,12 +226,13 @@ class ModelWrapper(object):
                 o = F.softmax(output['EXPR'].cpu(), dim=-1).argmax(-1).type(torch.LongTensor)
                 estimates['EXPR'] = o.numpy()
             elif task == 'VA':
-                if self.uncertainty:
-                    va_mean, va_sigma_square = get_mean_sigma(output['VA'])
-                    estimates['VA'] = va_mean.cpu().numpy()
-                    estimates['VA_sigma_square'] = va_sigma_square.cpu().numpy()
-                else:
-                    estimates['VA'] = output['VA'].cpu().numpy()
+                N = 20
+                v = F.softmax(output['VA'][:,:, :N].cpu(), dim=-1).numpy()
+                a = F.softmax(output['VA'][:,:, N:].cpu(), dim=-1).numpy()
+                bins = np.linspace(-1, 1, num=N)
+                v = (bins * v).sum(-1)
+                a = (bins * a).sum(-1)
+                estimates['VA'] = np.stack([v, a], axis = -1)
             elif task == 'FA':
                 estimates['FA'] = output['FA'].cpu().numpy()
         return estimates
@@ -231,7 +251,7 @@ class ModelWrapper(object):
                 B, N, C  = output[t].size()
                 loss_task = criterion_task(output[t].view(B*N, C), label.view(B*N, -1).squeeze(-1)) 
                 train_dict['loss_'+t] = loss_task.item()
-                loss += self.lambdas_per_task[t] * loss_task
+                loss += self.normalize_lambda(self.lambdas_per_task)[t] * loss_task
                 if FA_teacher is not None and 'FA' in self.tasks:
                     with torch.no_grad():
                         FA_label = FA_teacher(input_image.view((B*N,) + input_image.size()[2:]))
@@ -240,7 +260,7 @@ class ModelWrapper(object):
                     if 'loss_FA' not in train_dict.keys():
                         train_dict['loss_FA'] = []
                     train_dict['loss_FA'].append(loss_FA.item() * (1/len(tasks)))
-                    loss += self.lambdas_per_task['FA'] * (1/len(tasks)) * loss_FA
+                    loss += self.normalize_lambda(self.lambdas_per_task)['FA'] * (1/len(tasks)) * loss_FA
             train_dict['loss'] = loss.item()
             self._optimizer.zero_grad()
             loss.backward()
@@ -250,52 +270,49 @@ class ModelWrapper(object):
             self.loss_dict = train_dict
         else:
             raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
-    
-    # def optimize_parameters_kd(self, teacher_model): # knowledge distillation
-    #     train_dict = dict()
-    #     loss = 0.
-    #     loss_per_task = {'EXPR': 0, 'valence':0, 'arousal':0, 'AU':0}
-    #     if self._is_train:
-    #         for t in self._opt.tasks:
-    #             input_image = Variable(self._input_image[t])
-    #             output = self.resnet50_GRU(input_image)
-    #             label = Variable(self._label[t])
-    #             with torch.no_grad():
-    #                 teacher_preds = teacher_model.resnet50_GRU(input_image)
-    #             for task in self._opt.tasks:
-    #                 distillation_task = self._criterions_per_task[task].get_distillation_loss()
-    #                 B, N, C  = output['output'][task].size()
-    #                 loss_task = distillation_task(output['output'][task].view(B*N, C), teacher_preds['output'][task].view(B*N, C))
-    #                 if task == t:
-    #                     if task!= 'VA':
-    #                         criterion_task = self._criterions_per_task[t].get_task_loss()
-    #                         B, N, C  = output['output'][t].size()
-    #                         loss_task = self._opt.lambda_teacher * loss_task + (1 - self._opt.lambda_teacher) * criterion_task(output['output'][t].view(B*N, C), label.view(B*N, -1).squeeze())
-                        
-    #                     else:
-    #                         criterion_task = self._criterions_per_task[t].get_task_loss()
-    #                         loss_v, loss_a = criterion_task(output['output'][t].view(B*N, C), label.view(B*N, -1).squeeze())
-    #                         loss_task = [self._opt.lambda_teacher * loss_task[0] + (1 - self._opt.lambda_teacher) *loss_v,
-    #                                     self._opt.lambda_teacher * loss_task[1] + (1 - self._opt.lambda_teacher) *loss_a,] 
-    #                 if task!= 'VA':
-    #                     loss_per_task[task] += loss_task.item()
-    #                     loss += loss_task
-    #                 else:
-    #                     loss_v, loss_a = loss_task
-    #                     loss_per_task['valence'] += loss_v.item()
-    #                     loss_per_task['arousal'] += loss_a.item()
-    #                     loss += loss_v + loss_a
-    #         loss = loss/len(self._opt.tasks)
-    #         for key in loss_per_task.keys():
-    #             loss_task = loss_per_task[key]
-    #             train_dict['loss_'+key] = loss_task/len(self._opt.tasks)
-    #         train_dict['loss'] = loss.item()
-    #         self._optimizer.zero_grad()
-    #         loss.backward()
-    #         self._optimizer.step()
-    #         self.loss_dict = train_dict
-    #     else:
-    #         raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
+
+    def optimize_parameters_kd(self, train_batch, FA_teacher = None): 
+    # knowledge distillation with ensemble
+        train_dict = {}
+        loss = 0.
+        tasks = copy(self.tasks)
+        if 'FA' in self.tasks:
+            tasks.remove('FA')
+        if self._is_train:
+            input_image = Variable(train_batch['image'])
+            EXPR_label = Variable(train_batch['EXPR_label'])
+            AU_label = Variable(train_batch['AU_label'])
+            VA_label = Variable(train_batch['VA_label'])
+            if len(self._gpu_ids) > 0:
+                input_image = input_image.cuda()
+                EXPR_label =  EXPR_label.cuda()
+                AU_label = AU_label.cuda()
+                VA_label = VA_label.cuda()
+            output, _ = self._model(input_image)
+            teacher_probas = {"EXPR": EXPR_label, "AU": AU_label, "VA": VA_label}
+            for task in tasks:
+                distillation_task = get_distillation_loss(task)
+                B, N, C  = output[task].size()
+                loss_task = distillation_task(output[task].view(B*N, C), teacher_probas[task].view(B*N, C))                
+                train_dict["loss_{}".format(task)] = loss_task.item()
+                loss += self.normalize_lambda(self.lambdas_per_task)[task] * loss_task
+            # FA 
+            if FA_teacher is not None and 'FA' in self.tasks:
+                with torch.no_grad():
+                    FA_label = FA_teacher(input_image.view((B*N,) + input_image.size()[2:]))
+                B, N, C  = output['FA'].size()
+                distillation_task = get_distillation_loss('FA')
+                loss_FA = distillation_task(output['FA'].view(B*N, C), FA_label.view(B*N, -1).squeeze(-1))
+                train_dict['loss_FA'] = loss_FA.item() 
+                loss += self.normalize_lambda(self.lambdas_per_task)['FA'] * loss_FA
+            train_dict['loss'] = loss.item()
+
+            self._optimizer.zero_grad()
+            loss.backward()
+            self._optimizer.step()
+            self.loss_dict = train_dict
+        else:
+            raise ValueError("Do not call optimize_parameters function in test mode. USE forward() INSTEAD.")
     def get_current_errors(self):
         return self.loss_dict
     def get_metrics_per_task(self):
@@ -330,9 +347,7 @@ class ModelWrapper(object):
     def _load_network(self, network, network_label, epoch_label):
         load_filename = 'net_epoch_%s_%s.pth' % (epoch_label, network_label)
         load_path = os.path.join(self._save_dir, load_filename)
-        assert os.path.exists(
-            load_path), 'Weights file not found. Have you trained a model!? We are not providing one' % load_path
-        from ..utils import map_location
+        assert os.path.exists(load_path), 'Weights file %s not found ' % load_path
         checkpoint = torch.load(load_path, map_location = map_location(self.cuda))
         network.load_state_dict(checkpoint['state_dict'])
         print ('loaded net: %s' % load_path)

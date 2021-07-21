@@ -1,5 +1,6 @@
 import time
-import argparse
+import gc
+from options.train_options import TrainOptions
 from data.custom_dataset_data_loader import Multitask_DatasetDataLoader
 from models import ModelsFactory
 from collections import OrderedDict
@@ -38,66 +39,9 @@ for t in torch._storage_classes:
   else:
     if t in ForkingPickler._extra_reducers:
         del ForkingPickler._extra_reducers[t]
-#########################################################################
-parser = argparse.ArgumentParser()
-######### Losses #############
-parser.add_argument('--AU_criterion', type=str, default = 'bce')
-parser.add_argument('--EXPR_criterion', type=str, default = 'ce')
-parser.add_argument('--VA_criterion', type=str, default = 'ccc')
-parser.add_argument('--FA_criterion', type=str, default= 'l1_loss')
-parser.add_argument('--lambda_AU', type=float, default=1)
-parser.add_argument('--lambda_EXPR', type=float, default=1)
-parser.add_argument('--lambda_VA', type=float, default=1)
-parser.add_argument('--lambda_FA', type=float, default=1)
-########## Data and tasks #########
-parser.add_argument('--dataset_names', type=str, default = ['Mixed_EXPR','Mixed_AU','Mixed_VA'],nargs="+")
-parser.add_argument('--tasks', type=str, default = ['EXPR','AU','VA'],nargs="+")
-parser.add_argument('--seq_len', type=int, default= 30, help='length of input seq ')
-parser.add_argument('--fps', type=int, default=30, help=
-    "Changing the fps to some integer smaller than 30 can change the sampling rate")
-parser.add_argument('--batch_size', type=int, default= 2, help='input batch size per task')
-parser.add_argument('--image_size', type=int, default= 112, help='input image size') 
-#parser.add_argument('--uncertainty', action='store_true', help='whether to predict uncertainty for emotion tasks.')
+args = TrainOptions().parse()
 
-########### Ablation study: w/o auxillary task; Transformer or RNN #########
-parser.add_argument('--TModel', type=str, default='LSTM',
-                    help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
-parser.add_argument('--auxillary', action='store_true', help=
-    "Whether to train face alignment as an auxillary task.")
-########## temporal model definition #########
-parser.add_argument('--nhead', type=int, default=2,
-                    help='the number of heads in the encoder/decoder of the transformer model')
-parser.add_argument('--nhid', type=int, default=128,
-                    help='number of hidden units per layer')
-parser.add_argument('--nlayers', type=int, default=1,
-                    help='number of layers in the temporal model')
-########## Training setup ############
-parser.add_argument('--load_epoch', type=int, default=-1, 
-    help='which epoch to load? set to -1 to use latest cached model')
-parser.add_argument('--lr', type=float, default=1e-3, 
-    help= "The initial learning rate")
-parser.add_argument('--lr_policy', type=str, default='step', choices=['step', 'cosine'])
-parser.add_argument('--lr_decay_epochs', type=int, default=10, help='reduce the lr to 0.1*lr for every # epochs')
-parser.add_argument('--T_max', type=int, default=10000, help='the period for the cosine annealing (# iterations)')
-parser.add_argument('--weight_decay', type=float, default=0., help='weight decay')
-parser.add_argument('--nepochs', type=int, default=36)
-parser.add_argument('--optimizer', type=str, default='Adam')
-parser.add_argument('--gpu_ids', type=str, default='0', nargs='+',
-    help='gpu ids: e.g. 0 , 0 1 2. use -1 for CPU')
-parser.add_argument('--cuda', action='store_true', help="Whether to use GPU")
-parser.add_argument('--print_freq_s', type=int, default=10, help='print the training loss after every # seconds')
-parser.add_argument('--save_freq_s', type=int, default= 10,
-    help= 'save the training losses to the summary writer every # seconds.')
-parser.add_argument('--n_threads_train', default=8, type=int, help='# threads for loading data')
-parser.add_argument('--n_threads_test', default=2, type=int, help='# threads for loading data')
-parser.add_argument('--name', type=str, default='experiment_1', help='name of the experiment. It decides where to store samples and models')
-parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
-parser.add_argument('--loggings_dir', type=str, default='./loggings', help='loggings are saved here')
-
-args = parser.parse_args()
-prepare_arguments(args, is_train=True)
-
-if args.auxillary:
+if 'FA' in args.auxillary:
     from utils.misc import mobile_facenet
     print("Training model with an auxillary task: face alignment.")
     args.tasks = args.tasks + ['FA']
@@ -105,6 +49,16 @@ if args.auxillary:
     FA_teacher.eval()
 else:
     FA_teacher = None
+if 'VAD' in args.auxillary:
+    from utils.misc import VAD_MarbleNet
+    args.tasks = args.tasks + ['VAD']
+    print("Training model with an auxillary task: voice activity detection.")
+    VAD_teacher = VAD_MarbleNet.from_pretrained(model_name="vad_marblenet")
+    if args.cuda:
+        VAD_teacher.cuda()
+    VAD_teacher.eval()
+else:
+    VAD_teacher = None
 
 class Trainer:
     def __init__(self):
@@ -112,18 +66,18 @@ class Trainer:
         self._model = ModelsFactory.get_by_name(args,
             is_train= True,
             dropout = 0.5,
-            uncertainty=False,
             pretrained=True)
         model = self._model._model
         print("number of parameters: {}".format(sum(p.numel() for p in model.parameters())))
         self.training_dataloaders = Multitask_DatasetDataLoader(train_mode = 'Train', 
             num_threads = args.n_threads_train, dataset_names=args.dataset_names,
-            tasks = args.tasks, batch_size = args.batch_size, seq_len = args.seq_len, fps = args.fps,
+            tasks = args.tasks, batch_size = args.batch_size, seq_len = args.seq_len, fps = args.fps, window_size=args.window_size, sr = args.sr,
             transform = train_transforms(args.image_size))
         self.training_dataloaders = self.training_dataloaders.load_multitask_train_data()
+
         self.validation_dataloaders = Multitask_DatasetDataLoader(
             train_mode = 'Validation', num_threads = args.n_threads_test, dataset_names=args.dataset_names,
-            tasks = args.tasks, batch_size = 1, seq_len = args.seq_len, fps = 30, # validation set always sample by 30 fps
+            tasks = args.tasks, batch_size = 1, seq_len = 64, fps = 30, window_size=args.window_size, sr = args.sr,
             transform = test_transforms(args.image_size))
         self.validation_dataloaders = self.validation_dataloaders.load_multitask_val_test_data()
         
@@ -146,8 +100,17 @@ class Trainer:
         self._total_steps = args.load_epoch * len(self.training_dataloaders) 
         self._last_save_time = time.time()
         self._last_print_time = time.time()
-        self._current_val_acc = 0.
-
+        self._current_val_acc = dict([(t, 0.) for t in args.tasks if t !='FA'] + [('FA', 1000)])
+        self._no_improve_n_epochs = dict([(t, 0) for t in args.tasks])
+        for t in args.tasks:
+            self.writer.add_scalar("Lambdas/{}".format(t), self._model.lambdas_per_task[t], 0)
+        if args.load_epoch !=0: # lr scheduler adjust
+            for _ in range(args.load_epoch):
+                if args.lr_policy == 'step':
+                    self._model._LR_scheduler.step()
+                elif args.lr_policy == 'cosine':
+                    for _ in range(len(self.training_dataloaders)):
+                        self._model._LR_scheduler.step()
         for i_epoch in range(args.load_epoch + 1, args.nepochs + 1):
             epoch_start_time = time.time()
             self._model.get_current_LR()
@@ -156,13 +119,26 @@ class Trainer:
             self.training_dataloaders.reset()
             if args.lr_policy == 'step':
                 self._model._LR_scheduler.step()
-            val_acc = self._validate(i_epoch)
-            self.writer.add_scalar("Val_metric", val_acc, i_epoch)
-            if val_acc > self._current_val_acc:
-                print("validation acc improved, from {:.4f} to {:.4f}".format(self._current_val_acc, val_acc))
-                print('saving the model at the end of epoch %d, steps %d' % (i_epoch, self._total_steps))
-                #self._model.save(0) # only save the best on validation set
-                self._current_val_acc = val_acc
+            val_dict = self._validate(i_epoch)
+            gc.collect()
+            val_acc = sum([val_dict[t] for t in args.tasks if (t !='FA') and (t!='VAD')])
+            cur_val_acc = sum([self._current_val_acc[t] for t in args.tasks if (t !='FA') and (t!='VAD')])
+            if val_acc > cur_val_acc:
+                print("validation acc improved, from {:.4f} to {:.4f}".format(cur_val_acc, val_acc))
+
+            for t in args.tasks:
+                metric = val_dict[t]
+                if (t!='FA' and metric> self._current_val_acc[t]) or (t =='FA' and metric < self._current_val_acc[t]):
+                    self._current_val_acc[t] = metric
+                    self._no_improve_n_epochs[t] = 0
+                else:
+                    self._no_improve_n_epochs[t] +=1
+
+            self._model.update_lambda(self._no_improve_n_epochs)
+            for t in args.tasks:
+                self.writer.add_scalar("Lambdas/{}".format(t), self._model.lambdas_per_task[t], i_epoch)
+            self.writer.add_scalar("Val_metric/total", val_acc, i_epoch)
+
             self._model.save(i_epoch) # save every epoch model
 
             # print epoch info
@@ -183,7 +159,7 @@ class Trainer:
             # train model
             self._model.set_input(train_batch)
 
-            self._model.optimize_parameters(FA_teacher=FA_teacher)
+            self._model.optimize_parameters(FA_teacher=FA_teacher, VAD_teacher =VAD_teacher)
 
             # update epoch info
             self._total_steps += 1
@@ -198,9 +174,9 @@ class Trainer:
             if do_save:
                 for key in self._model.loss_dict.keys():
                     self.writer.add_scalar('Train/{}'.format(key), self._model.loss_dict[key], self._total_steps)
-                    self.writer.add_scalar('Lr', self._model._optimizer.param_groups[0]['lr'], self._total_steps)
+                self.writer.add_scalar('Lr', self._model._optimizer.param_groups[0]['lr'], self._total_steps)
                 self._last_save_time = time.time()
-            # if i_train_batch == 100:
+            # if i_train_batch == 20:
             #     break
 
     def _display_terminal(self, iter_start_time, i_epoch, i_train_batch, num_batches):
@@ -223,7 +199,10 @@ class Trainer:
         if 'FA' in tasks:
             tasks.remove('FA')
             eval_per_task['FA'] = []
-        hiddens = None
+        if 'VAD' in tasks:
+            tasks.remove('VAD')
+            eval_per_task['VAD'] = []
+        hiddens = dict([(t, None) for t in args.tasks])
         video_name = None
         for task in tasks:
             track_val_preds = {'preds':[]}
@@ -232,15 +211,15 @@ class Trainer:
             data_loader = self.validation_dataloaders[task]
             for i_val_batch, val_batch in tqdm(enumerate(data_loader), total = len(data_loader)):
                 # evaluate model
+                wrapped_v_batch = {task: val_batch}
                 if video_name is None:
                     video_name = val_batch['video'][0]
                 else:
                     if video_name != val_batch['video'][0]:
-                        hiddens = None
-                wrapped_v_batch = {task: val_batch}
+                        hiddens = dict([(t, None) for t in args.tasks])
                 self._model.set_input(wrapped_v_batch, input_tasks = [task])
                 outputs, errors, hiddens = self._model.forward(return_estimates=True, 
-                    input_tasks = [task], FA_teacher=FA_teacher, hiddens=hiddens)
+                    input_tasks = [task], FA_teacher=FA_teacher, VAD_teacher=VAD_teacher, hiddens = hiddens)
 
                 # store current batch errors
                 for k, v in errors.items():
@@ -268,12 +247,15 @@ class Trainer:
             if 'FA' in args.tasks:
                 output += " auxillary task FA loss: {:.4f}".format(val_errors['loss_FA'])
                 eval_per_task['FA'].append(val_errors['loss_FA'])
+            if 'VAD' in args.tasks:
+                output += " auxillary task VAD loss: {:.4f}".format(val_errors['loss_VAD'])
+                eval_per_task['VAD'].append(val_errors['loss_VAD'])
             print(output)
             eval_per_task[task] = [eval_items, eval_res]
 
         print("Validation Performance:")
         output = ""
-        for task in eval_per_task.keys():
+        for task in tasks:
             output += '{} Metric: {:.4f}   '.format(task, eval_per_task[task][1])
         print(output)
         # set model back to train
@@ -281,7 +263,7 @@ class Trainer:
 
         for task in args.tasks:
             save_dir = 'Val_{}'.format(task)
-            if task != 'FA':
+            if (task != 'FA') and (task != 'VAD'):
                 if task == 'AU' or task == 'EXPR':
                     name0, name1 = 'F1', 'Acc'
                 else:
@@ -290,7 +272,9 @@ class Trainer:
                 self.writer.add_scalar(save_dir+'/'+name1, eval_per_task[task][0][1], i_epoch)
             else:
                 self.writer.add_scalar(save_dir+'/'+'metric', np.mean(eval_per_task[task]), i_epoch)
-        return sum([eval_per_task[k][1] for k in tasks]) # only consider the tasks except for the auxillary task
+                print('{} Metric: {:.4f}   '.format(task, np.mean(eval_per_task[task])))
+                eval_per_task[task] = [0 , np.mean(eval_per_task[task])]
+        return dict([(k, eval_per_task[k][1]) for k in args.tasks]) 
 
 if __name__ == "__main__":
     trainer = Trainer()

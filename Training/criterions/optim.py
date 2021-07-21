@@ -6,7 +6,7 @@ import time
 import os
 import torch.nn as nn
 from typing import Type, Any, Callable, Union, List, Optional
-from utils.validation import NLL, Accuracy, MSE, MAE, NLL_Regression, KLD_Regression, CCCLoss
+from utils.validation import NLL, Accuracy, MSE, MAE, NLL_Regression, KLD_Regression, CCCLoss, Custom_CrossEntropyLoss
 from utils.misc import rename
 __all__ = ['Optimizer', 'Scheduler', 'Criterion', 'Metric']
 
@@ -20,7 +20,7 @@ class Optimizer:
         optimizer: str,
         lr: float,
         wd: float = 0.,
-        momentum: float = 0.,
+        momentum: float = 0.5,
         betas: List[float] = (0.9, 0.999)
         ): 
 
@@ -116,9 +116,13 @@ class Criterion:
         return combine_losses
 
     def get_single_loss(self, loss):
-        if loss.lower() in ['ce', 'bce', 'mse', 'l1', 'l1_loss', 'ccc', 'negative_ccc']:
+        if loss.lower() in ['ce', 'cce', 'bce', 'mse', 'l1', 'l1_loss', 'ccc', 'negative_ccc']:
             if loss.lower() == 'ce':
                 loss_func = nn.CrossEntropyLoss(reduction = self.reduction, weight = self.weight)
+            elif loss.lower() == 'cce':
+                def VA_losses(pred, target):
+                    return Custom_CrossEntropyLoss()(pred[..., :self.num_classes//2], target[..., 0]) + Custom_CrossEntropyLoss()(pred[..., self.num_classes//2:], target[..., 1])
+                loss_func = VA_losses
             elif loss.lower() == 'bce':
                 loss_func = nn.BCEWithLogitsLoss(reduction = self.reduction, 
                     weight = self.weight, 
@@ -129,7 +133,7 @@ class Criterion:
                 loss_func = nn.L1Loss(reduction = self.reduction)
             elif loss.lower() == 'ccc' or loss.lower() == 'negative_ccc':
                 def VA_losses(pred, target):
-                    return CCCLoss()(pred[..., 0], target[..., 0]) + CCCLoss()(pred[..., 1], target[..., 1])
+                    return CCCLoss()(pred[..., :self.num_classes//2], target[..., 0]) + CCCLoss()(pred[..., self.num_classes//2:], target[..., 1])
                 loss_func = VA_losses
             # function wrapper to get the first num_classes from pred
             @rename(loss)

@@ -8,36 +8,57 @@ class BaseOptions():
         self._initialized = False
 
     def initialize(self):
-        self._parser.add_argument('--load_epoch', type=int, default=-1, help='which epoch to load? set to -1 to use latest cached model')
-        self._parser.add_argument('--temperature', type=int, default=1.5, help='temperature in distillation loss')
-        self._parser.add_argument('--AU_label_size', type=int, default = 8, help='# of AUs')
-        self._parser.add_argument('--EXPR_label_size', type=int, default = 7, help='# of EXpressions')
-        self._parser.add_argument('--VA_label_size', type=int, default = 2, help='# of VA ')
-        self._parser.add_argument('--digitize_num', type=int, default= 20, choices = [1, 20], help='1 means no digitization,\
-                                                         20 means to digitize continuous label to 20 one hot vector ')
-        self._parser.add_argument('--AU_criterion', type=str, default = 'BCE', choices = ['FocalLoss', 'BCE'])
-        self._parser.add_argument('--EXPR_criterion', type=str, default = 'CE', choices = ['FocalLoss', 'CE'])
-        self._parser.add_argument('--VA_criterion', type=str, default = 'CCC_CE', choices = ['CCC', 'CCC_CE', 'CCC_FocalLoss'])
-
-        #self._parser.add_argument('--force_balance', action='store_true', help='force data balanced for training set')
+        self._parser.add_argument('--load_epoch', type=int, default=-1, 
+            help='which epoch to load? set to -1 to use latest cached model')
+        self._parser.add_argument('--AU_criterion', type=str, default = 'bce')
+        self._parser.add_argument('--EXPR_criterion', type=str, default = 'ce')
+        self._parser.add_argument('--VA_criterion', type=str, default = 'ccc')
+        self._parser.add_argument('--FA_criterion', type=str, default= 'l1_loss')
+        self._parser.add_argument('--lambda_AU', type=float, default=1)
+        self._parser.add_argument('--lambda_EXPR', type=float, default=1)
+        self._parser.add_argument('--lambda_VA', type=float, default=1)
+        self._parser.add_argument('--lambda_FA', type=float, default=1)
+        ########## Data and tasks #########
         self._parser.add_argument('--dataset_names', type=str, default = ['Mixed_EXPR','Mixed_AU','Mixed_VA'],nargs="+")
         self._parser.add_argument('--tasks', type=str, default = ['EXPR','AU','VA'],nargs="+")
-        # 'dataset_names' need to be in the same order as the 'tasks'
-        self._parser.add_argument('--seq_len', type=int, default=64, help='length of input seq ')
-        self._parser.add_argument('--frozen', action='store_true')
-        self._parser.add_argument('--hidden_size', type=int, default = 128, help='the embedding size of each output head' )
-        self._parser.add_argument('--batch_size', type=int, default= 20, help='input batch size per task')
-        self._parser.add_argument('--image_size', type=int, default= 224, help='input image size') # reducing iamge size is acceptable
-        self._parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-        self._parser.add_argument('--name', type=str, default='experiment_1', help='name of the experiment. It decides where to store samples and models')
+        self._parser.add_argument('--seq_len', type=int, default= 16, help='length of input seq ')
+        self._parser.add_argument('--fps', type=int, default=30, help=
+            "Changing the fps to some integer smaller than 30 can change the sampling rate")
+        self._parser.add_argument('--batch_size', type=int, default= 5, help='input batch size per task')
+        self._parser.add_argument('--image_size', type=int, default= 112, help='input image size') 
+
+        ########### Ablation study: w/o auxillary task; Transformer or RNN #########
+        self._parser.add_argument('--TModel', type=str, default='GRU',
+                            help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
+        self._parser.add_argument('--auxillary', action='store_true', help=
+            "Whether to train face alignment as an auxillary task.")
+        ########## temporal model definition #########
+        self._parser.add_argument('--nhead', type=int, default=2,
+                            help='the number of heads in the encoder/decoder of the transformer model')
+        self._parser.add_argument('--nhid', type=int, default=128,
+                            help='number of hidden units per layer')
+        self._parser.add_argument('--nlayers', type=int, default=1,
+                            help='number of layers in the temporal model')
+        self._parser.add_argument('--optimizer', type=str, default='Adam')
+        self._parser.add_argument('--gpu_ids', type=str, default='0', nargs='+',
+            help='gpu ids: e.g. 0 , 0 1 2. use -1 for CPU')
+        self._parser.add_argument('--cuda', action='store_true', help="Whether to use GPU")
+        self._parser.add_argument('--print_freq_s', type=int, default= 10, help='print the training loss after every # seconds')
+        self._parser.add_argument('--save_freq_s', type=int, default= 10,
+            help= 'save the training losses to the summary writer every # seconds.')
         self._parser.add_argument('--n_threads_train', default=8, type=int, help='# threads for loading data')
-        self._parser.add_argument('--n_threads_test', default=8, type=int, help='# threads for loading data')
+        self._parser.add_argument('--n_threads_test', default=2, type=int, help='# threads for loading data')
+        self._parser.add_argument('--name', type=str, default='experiment_1', help='name of the experiment. It decides where to store samples and models')
         self._parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
         self._parser.add_argument('--loggings_dir', type=str, default='./loggings', help='loggings are saved here')
-        self._parser.add_argument('--model_name', type=str, default='resnet50', help='the name of model')
-        self._parser.add_argument('--pretrained_dataset', type=str, default='ferplus',
-                                  choices = ['ferplus', 'sfew','imagenet'], 
-                                  help="the pretrained_dataset of the face feature extractor, choices:['ferplus', 'sfew','imagenet']")
+        self._parser.add_argument('--lr', type=float, default=1e-3, 
+            help= "The initial learning rate")
+        self._parser.add_argument('--lr_policy', type=str, default='step', choices=['step', 'cosine'])
+        self._parser.add_argument('--lr_decay_epochs', type=int, default=3, help='reduce the lr to 0.1*lr for every # epochs')
+        self._parser.add_argument('--T_max', type=int, default=20000, help='the period for the cosine annealing (# iterations)')
+        self._parser.add_argument('--weight_decay', type=float, default=0., help='weight decay')
+        self._parser.add_argument('--nepochs', type=int, default=10)
+
         self._initialized = True
 
     def parse(self):
@@ -106,7 +127,7 @@ class BaseOptions():
     def _save(self, args):
         expr_dir = os.path.join(self._opt.checkpoints_dir, self._opt.name)
         print(expr_dir)
-        if self.is_train:
+        if self.is_train and not os.path.exists(expr_dir):
             os.makedirs(expr_dir)
         else:
             assert os.path.exists(expr_dir)

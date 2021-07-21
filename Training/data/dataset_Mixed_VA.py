@@ -52,7 +52,7 @@ class dataset_Mixed_VA(DatasetBase):
                   'path': img_paths,
                   'index': index,
                   'id':frames_ids,
-                   'video': np.unique(video_names)[0],
+                  'video': np.unique(video_names)[0],
                   }
 
         return sample

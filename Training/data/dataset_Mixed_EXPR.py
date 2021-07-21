@@ -40,8 +40,9 @@ class dataset_Mixed_EXPR(DatasetBase):
             images.append(image)
             labels.append(label)
             img_paths.append(img_path)
+            frames_ids.append(frame_id)
             video_names.append(row['video'])
-
+        
         # pack data
         assert len(np.unique(video_names)) ==1, "the sequence must be sampled from the same video file"
         sample = {'image': torch.stack(images,dim=0),

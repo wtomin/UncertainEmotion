@@ -23,7 +23,7 @@ class RNNModel(nn.Module):
                                  options are ['LSTM', 'GRU', 'RNN_TANH' or 'RNN_RELU']""")
             self.rnn = nn.RNN(ninp, nhid, nlayers, nonlinearity=nonlinearity, dropout=dropout)
         self.decoder = nn.Linear(nhid, nout)
-        self.init_weights()
+        #self.init_weights()
         self.rnn_type = rnn_type
         self.nhid = nhid
         self.nlayers = nlayers
@@ -106,11 +106,13 @@ class TransformerModel(nn.Module):
         self.src_mask = None
         # self.GDC = GDC(ninp)
         # self.prelu = nn.PReLU(ninp)
-        self.pos_encoder = PositionalEncoding(ninp, dropout)
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+        self.linear = nn.Linear(ninp, nhid)
+        self.relu = nn.ReLU(nhid)
+        self.pos_encoder = PositionalEncoding(nhid, dropout)
+        encoder_layers = TransformerEncoderLayer(nhid, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        self.ninp = ninp
-        self.decoder = nn.Linear(ninp, nout)
+        self.nhid = nhid
+        self.decoder = nn.Linear(nhid, nout)
 
         self.init_weights()
 
@@ -125,8 +127,9 @@ class TransformerModel(nn.Module):
         nn.init.zeros_(self.decoder.weight)
         nn.init.uniform_(self.decoder.weight, -initrange, initrange)
 
-    def forward(self, src, has_mask=True):
+    def forward(self, src, has_mask=True, hidden=None):
         #src = self.prelu(self.GDC(src))
+        src = self.relu(self.linear(src))
         if has_mask:
             device = src.device
             if self.src_mask is None or self.src_mask.size(0) != len(src):
@@ -135,7 +138,7 @@ class TransformerModel(nn.Module):
         else:
             self.src_mask = None
 
-        src = src * math.sqrt(self.ninp)
+        src = src * math.sqrt(self.nhid)
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, self.src_mask)
         output = self.decoder(output)

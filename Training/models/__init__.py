@@ -11,7 +11,6 @@ class ModelsFactory:
     def get_by_name(args, 
         is_train, 
         dropout = 0.5,
-        uncertainty = True,
         pretrained = True):
         bk = mobile_facenet(pretrained, args.cuda)
         bk.remove_output_layer()
@@ -24,7 +23,7 @@ class ModelsFactory:
             elif t == 'EXPR' or t == 'AU':
                 dim = len(PATH().Aff_wild2.categories[t])
             else:
-                dim = len(PATH().Aff_wild2.categories[t])*2 if uncertainty else len(PATH().Aff_wild2.categories[t])
+                dim = len(PATH().Aff_wild2.categories[t])*20 # digitize_num
             
             if args.TModel == 'transformer':
                 temporal_models[t] = TransformerModel(ninp, args.nhead, args.nhid, args.nlayers, dim, dropout)
@@ -41,5 +40,5 @@ class ModelsFactory:
             args.gpu_ids, 
             args.AU_criterion, args.EXPR_criterion, args.VA_criterion, args.FA_criterion,
             args.lambda_AU, args.lambda_EXPR, args.lambda_VA, args.lambda_FA,
-            is_train, args.cuda, uncertainty)
+            is_train, args.cuda)
         return model
