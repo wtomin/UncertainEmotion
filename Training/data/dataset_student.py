@@ -11,7 +11,8 @@ PRESET_VARS = PATH()
 import pickle
 from utils.validation import sigmoid, softmax
 import torch
-
+from utils.misc import cal_uncertainty
+import pandas as pd
 class DatasetBase(data.Dataset):
     def __init__(self, train_mode='Train', transform=None):
         super(DatasetBase, self).__init__()
@@ -101,7 +102,8 @@ class DatasetStudent(DatasetBase):
             self._transform = lambda x: x
         # read dataset
         self._read_dataset_paths(annotation_file)
-    def get_task_label(self, df, task):
+    @classmethod
+    def get_task_label_and_uncertainty(self, df, task):
         if task == 'EXPR':
             categories = PRESET_VARS.Aff_wild2.categories['EXPR']
         elif task == 'AU':
@@ -117,6 +119,8 @@ class DatasetStudent(DatasetBase):
             preds_i_model = []
             for cate in categories:
                 value = df[cate+"_{:02d}".format(i_model)]
+                if isinstance(value, pd.Series):
+                    value = value.values
                 preds_i_model.append(value)
             preds_i_model = np.stack(preds_i_model, axis=-1)
             if task == 'EXPR':
@@ -124,17 +128,42 @@ class DatasetStudent(DatasetBase):
             elif task == 'AU':
                 preds_i_model = sigmoid(preds_i_model)
             elif task == 'VA':
-                preds_i_model = np.concatenate([softmax(preds_i_model[:20]), softmax(preds_i_model[20:])], axis=-1)
+                preds_i_model = np.concatenate([softmax(preds_i_model[..., :20]), softmax(preds_i_model[..., 20:])], axis=-1)
             total_probas.append(preds_i_model)
-        total_probas = np.stack(total_probas, axis=0).mean(0)
-        return total_probas
+        total_probas = np.stack(total_probas, axis=0)
+        mean_probas = total_probas.mean(0)
+        if task == 'EXPR':
+            alea_uncertainty, epi_uncertainty = cal_uncertainty(total_probas)
+        elif task == 'VA':
+            alea_uncertainty, epi_uncertainty = cal_uncertainty(total_probas[..., :20])
+            alea_uncertainty = [alea_uncertainty]
+            epi_uncertainty = [epi_uncertainty]
+            alea_uncertainty.append(cal_uncertainty(total_probas[..., 20:])[0])
+            epi_uncertainty.append(cal_uncertainty(total_probas[..., 20:])[1])
+            alea_uncertainty = np.stack(alea_uncertainty, axis=-1)
+            epi_uncertainty = np.stack(epi_uncertainty, axis=-1)
+        elif task == 'AU':
+            au_probas = np.stack([1- total_probas, total_probas], axis=-1)
+            num_aus = au_probas.shape[-2]
+            aleas, epis = [], []
+            for i in range(num_aus):
+                alea_uncertainty, epi_uncertainty = cal_uncertainty(au_probas[..., i, :])
+                aleas.append(alea_uncertainty)
+                epis.append(epi_uncertainty)
+            alea_uncertainty = np.stack(aleas, axis=-1)
+            epi_uncertainty = np.stack(epis, axis=-1)
+        return mean_probas, np.stack([alea_uncertainty, epi_uncertainty], axis=-1)
+    
     def __getitem__(self, index):
         assert (index < self._dataset_size)
         # start_time = time.time()
         images = []
         EXPR_labels = []
+        EXPR_uncertainty= []
         AU_labels = []
+        AU_uncertainty = []
         VA_labels = []
+        VA_uncertainty = []
         img_paths = []
         frames_ids = []
         video_names = []
@@ -143,12 +172,15 @@ class DatasetStudent(DatasetBase):
             img_path = row['path']
             image = Image.open(img_path).convert('RGB')
             image = self._transform(image)
-            label = self.get_task_label(row, 'EXPR')
+            label, uncertainty = self.get_task_label_and_uncertainty(row, 'EXPR')
             EXPR_labels.append(label)
-            label = self.get_task_label(row, 'AU')
+            EXPR_uncertainty.append(uncertainty)
+            label, uncertainty = self.get_task_label_and_uncertainty(row, 'AU')
             AU_labels.append(label)
-            label = self.get_task_label(row, 'VA')
+            AU_uncertainty.append(uncertainty)
+            label, uncertainty = self.get_task_label_and_uncertainty(row, 'VA')
             VA_labels.append(label)
+            VA_uncertainty.append(uncertainty)
             frame_id = row['frames_ids']
             images.append(image)
             img_paths.append(img_path)
@@ -158,8 +190,11 @@ class DatasetStudent(DatasetBase):
         assert len(np.unique(video_names)) ==1, "the sequence must be sampled from the same video file"
         sample = {'image': torch.stack(images,dim=0),
                   'EXPR_label': np.array(EXPR_labels).astype(np.float32),
+                  'EXPR_uncertainty': np.array(EXPR_uncertainty).astype(np.float32),
                   'AU_label': np.array(AU_labels).astype(np.float32),
+                  'AU_uncertainty': np.array(AU_uncertainty).astype(np.float32),
                   'VA_label': np.array(VA_labels).astype(np.float32),
+                  'VA_uncertainty': np.array(VA_uncertainty).astype(np.float32),
                   'path': img_paths,
                   'index': index,
                   'id':frames_ids,
