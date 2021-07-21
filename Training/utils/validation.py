@@ -66,10 +66,11 @@ class Custom_CrossEntropyLoss(nn.Module):
             y = y.cuda()
         return F.cross_entropy(x, y)
 class CCCLoss(nn.Module):
-    def __init__(self, digitize_num=20, range=[-1, 1]):
+    def __init__(self, digitize_num=20, range=[-1, 1], weight=None):
         super(CCCLoss, self).__init__() 
         self.digitize_num =  digitize_num
         self.range = range
+        self.weight = weight
         if self.digitize_num !=0:
             bins = np.linspace(*self.range, num= self.digitize_num)
             self.bins = Variable(torch.as_tensor(bins, dtype = torch.float32).cuda()).view((1, -1))
@@ -81,16 +82,39 @@ class CCCLoss(nn.Module):
             x = F.softmax(x, dim=-1)
             x = (self.bins * x).sum(-1) # expectation
         x = x.view(-1)
-        vx = x - torch.mean(x) 
-        vy = y - torch.mean(y) 
-        rho =  torch.sum(vx * vy) / (torch.sqrt(torch.sum(torch.pow(vx, 2))) * torch.sqrt(torch.sum(torch.pow(vy, 2))) + EPS)
-        x_m = torch.mean(x)
-        y_m = torch.mean(y)
-        x_s = torch.std(x)
-        y_s = torch.std(y)
-        ccc = 2*rho*x_s*y_s/(torch.pow(x_s, 2) + torch.pow(y_s, 2) + torch.pow(x_m - y_m, 2) + EPS)
+        if self.weight is None:
+            vx = x - torch.mean(x) 
+            vy = y - torch.mean(y) 
+            rho =  torch.sum(vx * vy) / (torch.sqrt(torch.sum(torch.pow(vx, 2))) * torch.sqrt(torch.sum(torch.pow(vy, 2))) + EPS)
+            x_m = torch.mean(x)
+            y_m = torch.mean(y)
+            x_s = torch.std(x)
+            y_s = torch.std(y)
+            ccc = 2*rho*x_s*y_s/(torch.pow(x_s, 2) + torch.pow(y_s, 2) + torch.pow(x_m - y_m, 2) + EPS)
+        else:
+            rho = weighted_correlation(x, y, self.weight)
+            x_var = weighted_covariance(x, x, self.weight)
+            y_var = weighted_covariance(y, y, self.weight)
+            x_mean = weighted_mean(x, self.weight)
+            y_mean = weighted_mean(y, self.weight)
+            ccc = 2*rho*torch.sqrt(x_var)*torch.sqrt(y_var)/(x_var + y_var + torch.pow(x_mean - y_mean, 2) +EPS)
         return 1-ccc
+def weighted_mean(x, w):
+    assert w.size(0) == x.size(0)
+    N = len(x.shape)
+    for _ in range(N-len(w.size())):
+        w = w.unsqueeze(1)
+    return (w*x).sum(0)/w.sum()
+def weighted_covariance(x, y, w):
+    x_mean = x - weighted_mean(x, w)
+    y_mean = y - weighted_mean(y, w)
+    cov = (x - x_mean) * (y - y_mean)
+    cov = weighted_mean(cov, w)
 
+    return cov
+def weighted_correlation(x, y, w):
+    rho = weighted_covariance(x, y, w)/(torch.sqrt(weighted_covariance(x, x, w)* weighted_covariance(y, y, w)) + EPS)
+    return rho
 def VA_metric(x, y):
     items = [CCC_score(x[:,0], y[:,0]), CCC_score(x[:,1], y[:,1])]
     return items, sum(items)
@@ -129,25 +153,53 @@ def get_distillation_loss(task):
     elif task == 'FA':
         return nn.L1Loss(reduction = 'mean')
 
-def AU_distillation_loss(y, teacher_probas, T = 1.0):
+def AU_distillation_loss(y, teacher_probas, T = 1.0, weight=None):
+    if weight is not None:
+        if (not torch.is_tensor(weight)):
+            weight = torch.tensor(weight)
+        weight = weight.to(y.device)
     teacher_probas = torch.sigmoid(invert_sigmoid(teacher_probas)/T)
-    return F.binary_cross_entropy_with_logits(y/T, teacher_probas)
-def EXPR_distillation_loss(y, teacher_probas, T = 1.0):
+    return F.binary_cross_entropy_with_logits(y/T, teacher_probas, weight=weight)
+def EXPR_distillation_loss(y, teacher_probas, T = 1.0, weight=None):
+
     teacher_probas = F.softmax(invert_softmax(teacher_probas)/T, dim=-1)
-    kl_div = nn.KLDivLoss(reduction = 'batchmean')(F.log_softmax(y/T, dim=-1), teacher_probas)
+    if weight is None:
+        kl_div = F.kl_div(F.log_softmax(y/T, dim=-1), teacher_probas, reduction='batchmean')
+    else:
+        if not torch.is_tensor(weight):
+            weight = torch.tensor(weight)
+        weight = weight.to(y.device)
+        kl_div = F.kl_div(F.log_softmax(y/T, dim=-1), teacher_probas, reduction='none')
+        kl_div = kl_div.sum(-1) # sum over classes
+        N = kl_div.size(0)
+        assert weight.size(0) == N, "expected the weight has {} ".format(N)
+        kl_div = (kl_div * weight).mean()
     return kl_div
-def VA_distillation_loss(y, teacher_probas, T=1.0):
-    def ccc(y, teacher_probas, T = 1.0):
+def VA_distillation_loss(y, teacher_probas, T=1.0, weight=None):
+    if weight is not None:
+        if (not torch.is_tensor(weight)):
+            weight = torch.tensor(weight)
+        weight = weight.to(y.device)
+    def ccc(y, teacher_probas, T = 1.0, weight=None):
         N = 20
         bins = torch.tensor(np.linspace(-1, 1, N).astype(np.float32), requires_grad=False).view((1, -1))
         if y.is_cuda:
             bins = bins.cuda()
-        v_labels = (F.softmax(invert_softmax(teacher_probas[:, :N])/T, dim=-1) * bins).sum(-1)
-        a_labels = (F.softmax(invert_softmax(teacher_probas[:, N:])/T, dim=-1) * bins).sum(-1)
-        loss_v = CCCLoss()(y[:, :N], v_labels)
-        loss_a = CCCLoss()(y[:, N:], a_labels)
+        if isinstance(T, float):
+            v_labels = (F.softmax(invert_softmax(teacher_probas[:, :N])/T, dim=-1) * bins).sum(-1)
+            a_labels = (F.softmax(invert_softmax(teacher_probas[:, N:])/T, dim=-1) * bins).sum(-1)
+        else:
+            assert torch.is_tensor(T), "Expect temperature to be tensor"
+            v_labels = (F.softmax(invert_softmax(teacher_probas[:, :N])/T[:,0:1], dim=-1) * bins).sum(-1)
+            a_labels = (F.softmax(invert_softmax(teacher_probas[:, N:])/T[:, 1:2], dim=-1) * bins).sum(-1)
+        if weight is not None:
+            loss_v = CCCLoss(weight=weight[:, 0])(y[:, :N], v_labels)
+            loss_a = CCCLoss(weight=weight[:, 1])(y[:, N:], a_labels)
+        else:
+            loss_v = CCCLoss()(y[:, :N], v_labels)
+            loss_a = CCCLoss()(y[:, N:], a_labels)
         return loss_a + loss_v
-    return ccc(y, teacher_probas, T=T)
+    return ccc(y, teacher_probas, T=T, weight=weight)
 def get_mean_sigma(pred):
     C_double = pred.size(-1)
     num_classes = C_double//2
