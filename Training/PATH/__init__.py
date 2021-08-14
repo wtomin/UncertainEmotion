@@ -8,5 +8,5 @@ class PATH(object):
             categories = {'AU': ['AU1','AU2','AU4','AU6','AU7','AU10','AU12','AU15','AU23','AU24','AU25','AU26'],
                             'EXPR':['Neutral','Anger','Disgust','Fear','Happiness','Sadness','Surprise'],
                             'VA':['valence', 'arousal']})
-
+        self.face_dir = '/media/Samsung/Aff-wild2-Challenge/cropped_aligned'
 
