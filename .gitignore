@@ -13,7 +13,7 @@ checkpoints/
 *.pyc
 *.so
 *.wav
-
+*.pdf
 # shell files
 # 
 *.dat

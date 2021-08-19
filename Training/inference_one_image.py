@@ -18,11 +18,15 @@ from utils.validation import sigmoid, softmax
 from scipy.stats import entropy
 import matplotlib
 import matplotlib.pyplot as plt
+fontsize = 24
 font = {
-        'size'   : 35}
+        'size'   : fontsize, 'family': 'sans-serif',
+        'serif': 'Helvetica',
+        'weight': 'normal'}
+#plt.rcParams['figure.dpi'] = 300
 matplotlib.rc('font', **font)
 plt.rcParams.update({'figure.autolayout': True})
-plt.rcParams["font.family"] = "serif"
+#plt.rcParams["font.family"] = "serif"
 #################RuntimeError: received 0 items of ancdata ###########################
 import torch
 torch.multiprocessing.set_sharing_strategy("file_system")
@@ -89,7 +93,7 @@ class Tester(object):
         self.plot_results(img, results)
 
     def plot_results(self, annt_img, results):
-        fig, axes = plt.subplots(1, 2, figsize=(18, 12))
+        fig, axes = plt.subplots(1, 2, figsize=(12, 8))
         axes[0].imshow(np.array(annt_img))
         axes[0].set_axis_off()
 
@@ -111,7 +115,7 @@ class Tester(object):
         #plt.figtext(0.7,0.03,"Emotion Uncertainty", va="center", ha="center")
         plt.figtext(0.2,0.1,"Facial Image", va="center", ha="center")
         plt.tight_layout()
-        plt.savefig('inference_img.pdf')
+        plt.savefig('inference_img.pdf', dpi=300)
         plt.show()
 
     def print_results(self, estimates, uncertainties):
