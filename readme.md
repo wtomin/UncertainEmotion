@@ -27,7 +27,7 @@ We list the number of parameters of our visual model (EMENet-V) and visual-audio
 
 Note that the FLOPs are the number of floating-point operations when the visual input is one RGB image (112x112) and audio input is one mel spectrogram (64x64). Our model can accept a sequence of facial images and a sequence of spectrograms.
 
-We not only trained single models, but also trained deep ensembles. A deep ensemble consists of several models with the same architecture, but different random initialization. We applied deep ensembles for emotion uncertainty estimation. Regarding the aleatoric and epsitemic uncertainty of emotions, please refer to our [paper](https://openaccess.thecvf.com/content/ICCV2021W/ABAW/papers/Deng_Iterative_Distillation_for_Better_Uncertainty_Estimates_in_Multitask_Emotion_Recognition_ICCVW_2021_paper.pdf).
+We not only trained single models, but also trained deep ensembles. A deep ensemble consists of several models with the same architecture, but different random initialization. We applied deep ensembles for emotion uncertainty estimation. Regarding the aleatoric and epsitemic uncertainty of emotions, please refer to our [paper](https://openaccess.thecvf.com/content/ICCV2021W/ABAW/papers/Deng_Iterative_Distillation_for_Better_Uncertainty_Estimates_in_Multitask_Emotion_Recognition_ICCVW_2021_paper.pdf) and our [presentation video](https://hkustconnect-my.sharepoint.com/:v:/g/personal/ddeng_connect_ust_hk/ES99uGaQFF1BpBiZRkLEeuUBAn0c68gg_T25qDcWxzDzIQ?e=xEKIxM). 
 
 # Requirements
 
