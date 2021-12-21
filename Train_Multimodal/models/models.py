@@ -161,7 +161,7 @@ class ModelWrapper(object):
         """
         tasks = copy(self.tasks) if input_tasks is None else input_tasks
         if 'FA' in tasks:
-            tasks.remove('FA') # face alignment is an auxillary task, which does not have training labels
+            tasks.remove('FA') # face alignment is an auxiliary task, which does not have training labels
         if 'VAD' in tasks:
             tasks.remove('VAD')
         for t in tasks:
