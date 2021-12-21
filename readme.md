@@ -63,23 +63,40 @@ Then you can change the `test_image_path` of the `inference_one_image.py` in the
 
 Suppose you want to load the model weight in `student_round_3_exp_0`, you can run
 ```
-python inference_one_image.py --names student_round_3_exp_0 --load_epochs 4 --auxiliary --cuda
+python inference_one_image.py --names student_round_3_exp_0 --load_epochs 4 --cuda --auxiliary
 ```
 
 You will obtain this output image, which illustrates the predictions and uncertainty (aleatoric uncertainty) of three emotion descriptors. Larger bar indicates higher uncertainty.
 
 <img src='./example_image/output_image.png' alt='drawing' width='450'/>
 
-2. You can load an ensemble of models' weights and predict the three emotion descriptors on a list of video files. The videos are stored 
+2. A live demonstration which uses the webcam to capture human faces and predict three emotion descriptors' prediction and their uncertainty.
+
+The main script for this demo is `Demo/Demo_Visual_Model.py`. You can run this demo with:
 
 ```
-python test_ensemble --names student_round_3_exp_0 student_round_3_exp_3  student_round_3_exp_5 student_round_3_exp_6 student_round_3_exp_9 --load_epochs 4 8 4 7 6
+python Demo_Visual_Model.py --use_cuda --save_file output.avi
 ```
-This will load the model weights from five experiments (e.g., the 4th epoch weights from the student_round_3_exp_0). After that, a folder named `ensemble_preds_student_round_3` will be created. The data under this folder are:
+This live demo will save an output video `output.avi` to the current directory. You may press `q` to exit this demo.
+
+3. You can load an ensemble of models' weights and predict the three emotion descriptors on the test set of the Aff-wild2 dataset. It requires you to prepare the test set data ahead. 
+
+Firstly run the `create_test_set_file.py` with correct directories.
+
 ```
---- 0 --- AU
+python create_test_set_file.py --data_dir directory-to-cropped-faces-test-set --video_dir directory-to-video-files-test-set 
 ```
 
+This will create a `test_set.pkl` which stores the test set frames paths and their extracted audio files.
+
+Then with visual models, you can run
+
+```
+python test_ensemble --names student_round_3_exp_0 student_round_3_exp_3  student_round_3_exp_5 student_round_3_exp_6 student_round_3_exp_9 --load_epochs 4 8 4 7 6 --cuda 
+```
+This will load the model weights from five visual-model experiments (e.g., the 4th epoch weights from the student_round_3_exp_0). After that, a folder named `ensemble_preds_student_round_3` will be created, where the predictions are all stored. 
+
+While for visual-audio models, you can replace the experiment names and number of epochs according to the downloaded weights files. 
 
 # Cite
 If you are interested, please cite our work:
