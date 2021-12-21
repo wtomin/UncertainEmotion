@@ -68,7 +68,7 @@ else:
 EPS = 1e-8
 PRESET_VARS = PATH()
 
-test_image_path = '/media/Samsung/Aff-wild2-Challenge/cropped_aligned/90-30-1080x1920/00081.jpg'
+test_image_path = '../example_image/00081.jpg'
 
 img = Image.open(test_image_path)
 img = img.resize((224, 224))
