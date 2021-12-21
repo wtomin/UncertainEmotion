@@ -29,11 +29,11 @@ class BaseOptions():
         self._parser.add_argument('--batch_size', type=int, default= 8, help='input batch size per task')
         self._parser.add_argument('--image_size', type=int, default= 112, help='input image size') 
 
-        ########### Ablation study: w/o auxillary task; Transformer or RNN #########
+        ########### Ablation study: w/o auxiliary task; Transformer or RNN #########
         self._parser.add_argument('--TModel', type=str, default='GRU',
                             help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
-        self._parser.add_argument('--auxillary', nargs="+",  default = [], help=
-            "auxillary tasks: FA, VAD.")
+        self._parser.add_argument('--auxiliary', nargs="+",  default = [], help=
+            "auxiliary tasks: FA, VAD.")
         ########### Audio ######
         self._parser.add_argument('--window_size', type=float, default=0.63, help="The audio frame will contain the audio signals in one window")
         self._parser.add_argument('--sr', type=int, default=16000, help='The sample rate for the audio file')

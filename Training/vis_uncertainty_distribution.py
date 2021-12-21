@@ -38,9 +38,9 @@ default_collate_func = dataloader.default_collate
 #########################################################################
 args = TestOptions().parse()
 
-if args.auxillary:
+if args.auxiliary:
     from utils.misc import mobile_facenet
-    print("Training model with an auxillary task: face alignment.")
+    print("Training model with an auxiliary task: face alignment.")
     args.tasks = args.tasks + ['FA']
     FA_teacher = mobile_facenet(pretrained=True, cuda=args.cuda)
     FA_teacher.eval()

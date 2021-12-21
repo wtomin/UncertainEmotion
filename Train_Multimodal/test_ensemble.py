@@ -41,18 +41,18 @@ for t in torch._storage_classes:
         del ForkingPickler._extra_reducers[t]
 #########################################################################
 args = TestOptions().parse()
-if 'FA' in args.auxillary:
+if 'FA' in args.auxiliary:
     from utils.misc import mobile_facenet
-    print("Training model with an auxillary task: face alignment.")
+    print("Training model with an auxiliary task: face alignment.")
     args.tasks = args.tasks + ['FA']
     FA_teacher = mobile_facenet(pretrained=True, cuda=args.cuda)
     FA_teacher.eval()
 else:
     FA_teacher = None
-if 'VAD' in args.auxillary:
+if 'VAD' in args.auxiliary:
     from utils.misc import VAD_MarbleNet
     args.tasks = args.tasks + ['VAD']
-    print("Training model with an auxillary task: voice activity detection.")
+    print("Training model with an auxiliary task: voice activity detection.")
     VAD_teacher = VAD_MarbleNet.from_pretrained(model_name="vad_marblenet")
     if args.cuda:
         VAD_teacher.cuda()

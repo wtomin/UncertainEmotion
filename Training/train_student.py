@@ -43,9 +43,9 @@ for t in torch._storage_classes:
         del ForkingPickler._extra_reducers[t]
 args = TrainOptions().parse()
 
-if args.auxillary:
+if args.auxiliary:
     from utils.misc import mobile_facenet
-    print("Training model with an auxillary task: face alignment.")
+    print("Training model with an auxiliary task: face alignment.")
     args.tasks = args.tasks + ['FA']
     FA_teacher = mobile_facenet(pretrained=True, cuda=args.cuda)
     FA_teacher.eval()
@@ -223,7 +223,7 @@ class Trainer:
             output = "{} Validation {}: Epoch [{}] Step [{}] loss {:.4f} Eval_0 {:.4f} Eval_1 {:.4f}".format(task, 
                 now_time, i_epoch, self._total_steps, val_errors['loss_{}'.format(task)], eval_items[0], eval_items[1])
             if 'FA' in args.tasks:
-                output += " auxillary task FA loss: {:.4f}".format(val_errors['loss_FA'])
+                output += " auxiliary task FA loss: {:.4f}".format(val_errors['loss_FA'])
                 eval_per_task['FA'].append(val_errors['loss_FA'])
             print(output)
             eval_per_task[task] = [eval_items, eval_res]
