@@ -14,11 +14,11 @@ We trained unified models to predict three emotion descriptors,
 
 # Models
 
-Our models have efficient CNN-RNN architectures. We show the visual and visual-audio model architectures in the following picture.
+Our models have efficient CNN-RNN architectures. We show the visual and visual-audio model architectures in this picture. The visual backbone is the [MobileFaceNet](https://arxiv.org/abs/1804.07573) and the audio backbone is the [MarbleNet](https://arxiv.org/abs/2010.13886).
 
 <img src='./example_image/Model_Architecture.jpg' alt='drawing' width='450'/>
 
-We list the number of parameters of our visual model and visual-audio model as follows:
+We list the number of parameters of our visual model (EMENet-V) and visual-audio model (EMENet-VA) as follows:
 
 | Model | # Param. | FLOPs|
 | --- | ---| ---|
@@ -47,11 +47,13 @@ pip install nemo_toolkit['all']
 ```
 
 # Usage
-To use the **visual models** trained by us, please change the current working directory to `Training`. You can download model weights from [here]().
+To use the **visual models** trained by us, change the current working directory to `Training`. You can download model weights from [here](https://hkustconnect-my.sharepoint.com/:u:/g/personal/ddeng_connect_ust_hk/EYWGU4yG3N5Eo4sn8I1cuiwByo17gXwcYllP2WhDNBu_sQ?e=vDn8JN).
 
-To use the **visual-audio models**, please change the current working directory to 'Train_Multimodal'. You can download model weights from [here]().
+To use the **visual-audio models**, change the current working directory to 'Train_Multimodal'. You can download model weights from [here](https://hkustconnect-my.sharepoint.com/:u:/g/personal/ddeng_connect_ust_hk/EU5ee3MZUEJIoTvGNdkoxZ0BkIZZi_uXdv_cBKVmV2M--w?e=ekUM4j).
 
- After downloading model weights, you can put the compressed file in `[current-workdir]/checkpoints/`, then uncompress it. The model weights are stored in separate folders, where each folder corresponds to a single model in an ensemble.
+After downloading model weights, you can put the compressed file in `current-workdir/checkpoints/`, then uncompress it. The model weights are stored in separate folders, where each folder corresponds to a single model in an ensemble.
+
+Here are a couple of tasks you can perform with our implementation.
 
 1. You can load a single **visual** model's weights and then inference the three emotion descriptors of a single input image.
 
