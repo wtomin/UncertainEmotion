@@ -1,14 +1,24 @@
-# Multitask Emotion Recognition with Better Uncertainty
+# Multitask Emotion Recognition with Uncertainty Prediction
 
-This is a repository for our solution for the [ABAW2021 Challenge](https://ibug.doc.ic.ac.uk/resources/iccv-2021-2nd-abaw/). Our team name is NISL-2021. We have won the first place in the VA challenge track ([leaderboard](https://github.com/dkollias/ABAW2-Results/blob/main/abaw2_va_leaderboard.pdf)), where the Valence CCC on the test set is 0.5326 and the Arousal CCC on the test set is 0.4537. 
+This is a repository for our solution for the [ABAW2021 Challenge](https://ibug.doc.ic.ac.uk/resources/iccv-2021-2nd-abaw/). Our team name is NISL-2021. We have won the first place in the VA challenge track ([leaderboard](https://github.com/dkollias/ABAW2-Results/blob/main/abaw2_va_leaderboard.pdf)). The Valence CCC on the test set is 0.5326 and the Arousal CCC on the test set is 0.4537. 
 
 # Three Emotion Descriptors
 
-We trained unified models to predict three emotion descriptors, i.e., 12 facial action units, 7 basic emotions, valence and arousal. The 12 action units are AU1, AU2, AU4, AU6, AU7, AU10, AU12, AU15, AU23, AU24, AU25, AU26. The seven basic emotions are neutral, anger, disgust, fear, happiness, sadness and surprise. Valence and arousal are both continuous values in the range [-1, 1].
+We trained unified models to predict three emotion descriptors, 
 
-# Model Parameters
+ - 12 facial action units, i.e., AU1, AU2, AU4, AU6, AU7, AU10, AU12, AU15, AU23, AU24, AU25, AU26
 
-Our models have efficient CNN-RNN architectures. We list the number of parameters of our visual model and visual-audio model as follows:
+ - 7 basic emotions, i.e., neutral, anger, disgust, fear, happiness, sadness and surprise
+
+ - continuous emotions: valence and arousal in the range [-1, 1].
+
+# Models
+
+Our models have efficient CNN-RNN architectures. We show the visual and visual-audio model architectures in the following picture.
+
+![model architecture](example_image/Model_Architecture.png)
+
+We list the number of parameters of our visual model and visual-audio model as follows:
 
 | Model | # Param. | FLOPs|
 | --- | ---| ---|
@@ -55,6 +65,7 @@ python inference_one_image.py --names student_round_3_exp_0 --load_epochs 4 --au
 ```
 
 You will obtain this output image, which illustrates the predictions and uncertainty (aleatoric uncertainty) of three emotion descriptors. Larger bar indicates higher uncertainty.
+
 ![output](example_image/output_image.png)
 
 
