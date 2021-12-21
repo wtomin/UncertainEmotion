@@ -16,7 +16,8 @@ We trained unified models to predict three emotion descriptors,
 
 Our models have efficient CNN-RNN architectures. We show the visual and visual-audio model architectures in the following picture.
 
-![model architecture](./example_image/Model_Architecture.png)
+![model architecture](./example_image/Model_Architecture.jpg)
+<img src='./example_image/Model_Architecture.jpg' alt='drawing' width='200'/>
 
 We list the number of parameters of our visual model and visual-audio model as follows:
 
