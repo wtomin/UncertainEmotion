@@ -2,7 +2,7 @@ torch==1.7.1
 torchvision==0.8.2
 torchaudio==0.7.2
 tensorboard==2.5.0
-pillow==8.2.0
+pillow==8.3.2
 numpy>=1.18
 scipy>=1.5
 scikit-learn==0.24.0
