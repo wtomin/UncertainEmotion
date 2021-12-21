@@ -27,11 +27,11 @@ class BaseOptions():
         self._parser.add_argument('--batch_size', type=int, default= 5, help='input batch size per task')
         self._parser.add_argument('--image_size', type=int, default= 112, help='input image size') 
 
-        ########### Ablation study: w/o auxillary task; Transformer or RNN #########
+        ########### Ablation study: w/o auxiliary task; Transformer or RNN #########
         self._parser.add_argument('--TModel', type=str, default='GRU',
                             help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU, Transformer)')
-        self._parser.add_argument('--auxillary', action='store_true', help=
-            "Whether to train face alignment as an auxillary task.")
+        self._parser.add_argument('--auxiliary', action='store_true', help=
+            "Whether to train face alignment as an auxiliary task.")
         ########## temporal model definition #########
         self._parser.add_argument('--nhead', type=int, default=2,
                             help='the number of heads in the encoder/decoder of the transformer model')
