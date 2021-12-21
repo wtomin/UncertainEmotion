@@ -55,7 +55,9 @@ After downloading model weights, you can put the compressed file in `current-wor
 
 Here are a couple of tasks you can perform with our implementation.
 
-1. You can load a single **visual** model's weights and then inference the three emotion descriptors of a single input image.
+## Inference on one image
+
+You can load a single **visual** model's weights and then inference the three emotion descriptors of a single input image.
 
 To do this, you can first prepare a cropped face image, like the image `example_image/00081.jpg`. 
 
@@ -70,7 +72,9 @@ You will obtain this output image, which illustrates the predictions and uncerta
 
 <img src='./example_image/output_image.png' alt='drawing' width='450'/>
 
-2. A live demonstration which uses the webcam to capture human faces and predict three emotion descriptors' prediction and their uncertainty.
+## A live video demo
+
+A live demonstration which uses the webcam to capture human faces and predict three emotion descriptors' prediction and their uncertainty.
 
 The main script for this demo is `Demo/Demo_Visual_Model.py`. You can run this demo with:
 
@@ -79,7 +83,9 @@ python Demo_Visual_Model.py --use_cuda --save_file output.avi
 ```
 This live demo will save an output video `output.avi` to the current directory. You may press `q` to exit this demo.
 
-3. You can load an ensemble of models' weights and predict the three emotion descriptors on the test set of the Aff-wild2 dataset. It requires you to prepare the test set data ahead. 
+## Predicting on videos
+
+You can load an ensemble of models' weights and predict the three emotion descriptors on the test set of the Aff-wild2 dataset. It requires you to prepare the test set data ahead. 
 
 Firstly run the `create_test_set_file.py` with correct directories.
 
