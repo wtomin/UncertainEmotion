@@ -16,8 +16,7 @@ We trained unified models to predict three emotion descriptors,
 
 Our models have efficient CNN-RNN architectures. We show the visual and visual-audio model architectures in the following picture.
 
-![model architecture](./example_image/Model_Architecture.jpg)
-<img src='./example_image/Model_Architecture.jpg' alt='drawing' width='200'/>
+<img src='./example_image/Model_Architecture.jpg' alt='drawing' width='450'/>
 
 We list the number of parameters of our visual model and visual-audio model as follows:
 
@@ -67,8 +66,7 @@ python inference_one_image.py --names student_round_3_exp_0 --load_epochs 4 --au
 
 You will obtain this output image, which illustrates the predictions and uncertainty (aleatoric uncertainty) of three emotion descriptors. Larger bar indicates higher uncertainty.
 
-![output](./example_image/output_image.png)
-
+<img src='./example_image/output_image.png' alt='drawing' width='450'/>
 
 2. You can load an ensemble of models' weights and predict the three emotion descriptors on a list of video files. The videos are stored 
 
