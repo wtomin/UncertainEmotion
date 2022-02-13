@@ -135,7 +135,12 @@ class dataset_Task(DatasetBase):
     def __getitem__(self, index):
         assert (index < self._dataset_size)
         df = self.samples.iloc[index]
-        image = Image.open(df['path']).convert("RGB")
+        img_path = df['path']
+        if not os.path.exists(img_path):
+            par_pardir = os.path.dirname(os.path.dirname(img_path))
+            img_path = img_path.replace(par_pardir, PRESET_VARS.face_dir)# replace the "*/cropped_aligned/" by the PRESET_VARS.face_dir
+            assert os.path.exists(img_path)
+        image = Image.open(img_path).convert("RGB")
         image = self._transform(image)
         if self.task =='AU':
             label = df[PRESET_VARS.Aff_wild2.categories['AU']].values.astype(np.float32)
