@@ -183,6 +183,7 @@ class EmotionNet(pl.LightningModule):
         elif task=='EXPR':
             res = EXPR_metric(estimates, labels)
         else:
+            estimates = sphere2cube(torch.tensor(estimates)).numpy()
             res = VA_metric(estimates, labels)
         return res
     def compute_estimate(self, task, y_hat):
@@ -271,10 +272,11 @@ if __name__ == '__main__':
     parser.add_argument('--ckp-save-dir', type=str, default='checkpoints')
     parser.add_argument('--exp-name', type=str, default='experiment_1')
     parser.add_argument('--find-best-lr', action="store_true")
-    parser.add_argument('--lr', type=float, default = 1e-3)
+    parser.add_argument('--lr', type=float, default = 0.1)
+    parser.add_argument('--wd', type=float, default=5e-4)
     args = parser.parse_args()
     tasks = ['AU', 'EXPR', 'VA']
-    model = EmotionNet(tasks, lr = args.lr)
+    model = EmotionNet(tasks, lr = args.lr, wd=args.wd)
     # model.verify_metrics_integrity()
     dm = DataModule(tasks,
         transform_train = train_transforms(112), transform_test = test_transforms(112), 
