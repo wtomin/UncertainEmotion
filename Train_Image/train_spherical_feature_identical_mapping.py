@@ -94,30 +94,23 @@ class EmotionNet(pl.LightningModule):
         backbone = mobile_facenet(pretrained=True)
         backbone.remove_output_layer()
         self.backbone = backbone
-        self.fc = nn.Linear(512, 64, bias=True)
         emotion_layers = []
         for t in tasks:
             dim = len(PATH().Aff_wild2.categories[t])
             if t == 'AU':
-                emotion_layer = nn.Sequential(
-                nn.Dropout(0.5),
-                nn.Linear(512, 64),
-                nn.BatchNorm1d(64),
-                MarginCosineProduct(64, dim, s = 4, m=0)
+                emotion_layer = nn.ModuleList(
+                [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
+                MarginCosineProduct(64, dim, s = 4, m=0)]
                 )
             elif t == 'EXPR':
-                emotion_layer = nn.Sequential(
-                nn.Dropout(0.5),
-                nn.Linear(512, 64),
-                nn.BatchNorm1d(64),
-                MarginCosineProduct(64, dim, s = 3.65, m=0)
+                emotion_layer = nn.ModuleList(
+                [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
+                MarginCosineProduct(64, dim, s = 3.65, m=0)]
                 )
             elif t == 'VA':
-                emotion_layer = nn.Sequential(
-                nn.Dropout(0.5),
-                nn.Linear(512, 64),
-                nn.BatchNorm1d(64),
-                MarginCosineProduct(64, dim, s = 3.65, m=0)
+                emotion_layer = nn.ModuleList(
+                [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
+                MarginCosineProduct(64, dim, s = 3.65, m=0)]
                 )
             emotion_layers.append(emotion_layer)
         self.emotion_layers = nn.ModuleList(emotion_layers)
@@ -157,13 +150,13 @@ class EmotionNet(pl.LightningModule):
             print("{} Torch metrics:{}".format(task, res))
     def forward(self, x, y = {}):
         x = self.backbone(x)
-        x = F.relu(self.fc(x))
         output = {}
         for i, t in enumerate(self.tasks):
+            spherical_feature = self.emotion_layers[i][0](x)
             if t != 'VA' and t in y.keys():
-                out_emo = self.emotion_layers[i](x, y[t])
+                out_emo = self.emotion_layers[i][1](spherical_feature, y[t])
             else:
-                out_emo = self.emotion_layers[i](x)
+                out_emo = self.emotion_layers[i][1](spherical_feature)
             output[t] = out_emo
         return output
     def compute_loss(self, task, y_hat, y):
