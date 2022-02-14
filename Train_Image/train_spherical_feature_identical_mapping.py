@@ -99,11 +99,26 @@ class EmotionNet(pl.LightningModule):
         for t in tasks:
             dim = len(PATH().Aff_wild2.categories[t])
             if t == 'AU':
-                emotion_layer = MarginCosineProduct(64, dim, s = 4, m=0)
+                emotion_layer = nn.Sequential(
+                nn.Dropout(0.5),
+                nn.Linear(512, 64),
+                nn.BatchNorm1d(64),
+                MarginCosineProduct(64, dim, s = 4, m=0)
+                )
             elif t == 'EXPR':
-                emotion_layer = MarginCosineProduct(64, dim, s = 3.65, m=0)
+                emotion_layer = nn.Sequential(
+                nn.Dropout(0.5),
+                nn.Linear(512, 64),
+                nn.BatchNorm1d(64),
+                MarginCosineProduct(64, dim, s = 3.65, m=0)
+                )
             elif t == 'VA':
-                emotion_layer = MarginCosineProduct(64, dim, s = 3.65, m=0)
+                emotion_layer = nn.Sequential(
+                nn.Dropout(0.5),
+                nn.Linear(512, 64),
+                nn.BatchNorm1d(64),
+                MarginCosineProduct(64, dim, s = 3.65, m=0)
+                )
             emotion_layers.append(emotion_layer)
         self.emotion_layers = nn.ModuleList(emotion_layers)
         self.tasks = tasks
@@ -272,8 +287,8 @@ if __name__ == '__main__':
     parser.add_argument('--ckp-save-dir', type=str, default='checkpoints')
     parser.add_argument('--exp-name', type=str, default='experiment_1')
     parser.add_argument('--find-best-lr', action="store_true")
-    parser.add_argument('--lr', type=float, default = 1e-2)
-    parser.add_argument('--wd', type=float, default=5e-4)
+    parser.add_argument('--lr', type=float, default = 1e-3)
+    parser.add_argument('--wd', type=float, default=0)
     args = parser.parse_args()
     tasks = ['AU', 'EXPR', 'VA']
     model = EmotionNet(tasks, lr = args.lr, wd=args.wd)
