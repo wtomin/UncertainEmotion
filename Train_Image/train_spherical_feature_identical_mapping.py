@@ -166,7 +166,7 @@ class EmotionNet(pl.LightningModule):
             return F.cross_entropy(y_hat, y, weight = self.EXPR_weight.to(y.device))
         else:
             y = cube2sphere(y)
-            return CCCLoss(digitize_num=1)(y_hat[..., 0], y[..., 0]) + CCCLoss(digitize_num=1)(y_hat[..., 1], y[..., 1])
+            return VA_LOSS(y_hat[..., 0], y[..., 0]) + VA_LOSS(y_hat[..., 1], y[..., 1])
     def compute_metric(self, task, estimates, labels):
         if task=='AU':
             f1_metric = torchmetrics.F1(num_classes = 2, average='macro', mdmc_average='samplewise')
@@ -282,8 +282,18 @@ if __name__ == '__main__':
     parser.add_argument('--find-best-lr', action="store_true")
     parser.add_argument('--lr', type=float, default = 1e-3)
     parser.add_argument('--wd', type=float, default=0)
+    parser.add_argument('--va_loss', type=str)
     args = parser.parse_args()
     tasks = ['AU', 'EXPR', 'VA']
+    global VA_LOSS
+    if args.va_loss == 'ccc':
+        VA_LOSS = CCCLoss(digitize_num=1)
+    elif args.va_loss == 'mse':
+        VA_LOSS = nn.MSELoss()
+    elif args.va_loss == 'mae':
+        VA_LOSS = nn.L1Loss()
+
+
     model = EmotionNet(tasks, lr = args.lr, wd=args.wd)
     # model.verify_metrics_integrity()
     dm = DataModule(tasks,
