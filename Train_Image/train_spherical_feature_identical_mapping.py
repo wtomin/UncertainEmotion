@@ -18,7 +18,7 @@ import torchmetrics
 PRESET_VARS = PATH()
 
 class MarginCosineProduct(nn.Module):
-    def __init__(self, in_features, out_features, s = 3.65, m=0.):
+    def __init__(self, in_features, out_features, s = 3.65, m=0., use_bias = True):
         super(MarginCosineProduct, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -26,8 +26,12 @@ class MarginCosineProduct(nn.Module):
         self.m = m  
         self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
         nn.init.xavier_uniform_(self.weight)
-        self.bias = nn.Parameter(torch.FloatTensor(out_features))
-        nn.init.xavier_uniform_(self.bias)
+        stdv = 1./np.sqrt(self.weight.size(1))
+        if use_bias:
+            self.bias = nn.Parameter(torch.FloatTensor(out_features))
+            self.bias.data.uniform_(-stdv, stdv)
+        else:
+            self.bias = None
     def forward(self, input, label = None):
         cosine = F.linear(F.normalize(input), F.normalize(self.weight))
         if label is not None:
@@ -36,7 +40,10 @@ class MarginCosineProduct(nn.Module):
                 onehot.scatter_(1, label.view(-1, 1), 1.0).to(label.device)
             else:
                 onehot = label
-            output = self.s * (cosine - onehot * self.m) + self.bias
+            if self.bias is not None:
+                output = self.s * (cosine - onehot * self.m) + self.bias
+            else:
+                output = self.s * (cosine - onehot * self.m) 
         else:
             # margin is not used when label is None
             output = cosine
@@ -96,23 +103,23 @@ class EmotionNet(pl.LightningModule):
         backbone = mobile_facenet(pretrained=True)
         backbone.remove_output_layer()
         self.backbone = backbone
-        self.fc = nn.Sequential(nn.Linear(512, 1024), nn.BatchNorm1d(1024))
+        #self.fc = nn.Sequential(nn.Linear(512, 1024), nn.BatchNorm1d(1024))
         emotion_layers = []
         for t in tasks:
             dim = len(PATH().Aff_wild2.categories[t])
             if t == 'AU':
                 emotion_layer = nn.ModuleList(
-                [nn.Sequential(nn.Dropout(0.5), nn.Linear(1024, 64), nn.BatchNorm1d(64)),
+                [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
                 MarginCosineProduct(64, dim, s = 4, m=0)]
                 )
             elif t == 'EXPR':
                 emotion_layer = nn.ModuleList(
-                [nn.Sequential(nn.Dropout(0.5), nn.Linear(1024, 64), nn.BatchNorm1d(64)),
+                [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
                 MarginCosineProduct(64, dim, s = 3.65, m=0)]
                 )
             elif t == 'VA':
                 emotion_layer = nn.ModuleList(
-                [nn.Sequential(nn.Dropout(0.5), nn.Linear(1024, 64), nn.BatchNorm1d(64)),
+                [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
                 MarginCosineProduct(64, dim, s = 3.65, m=0)]
                 )
             emotion_layers.append(emotion_layer)
@@ -153,7 +160,6 @@ class EmotionNet(pl.LightningModule):
             print("{} Torch metrics:{}".format(task, res))
     def forward(self, x, y = {}):
         x = self.backbone(x)
-        x = self.fc(x)
         output = {}
         for i, t in enumerate(self.tasks):
             spherical_feature = self.emotion_layers[i][0](x)
