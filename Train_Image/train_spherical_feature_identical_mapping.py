@@ -26,6 +26,8 @@ class MarginCosineProduct(nn.Module):
         self.m = m  
         self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
         nn.init.xavier_uniform_(self.weight)
+        self.bias = nn.Parameter(torch.FloatTensor(out_features))
+        nn.init.xavier_uniform_(self.bias)
     def forward(self, input, label = None):
         cosine = F.linear(F.normalize(input), F.normalize(self.weight))
         if label is not None:
@@ -34,7 +36,7 @@ class MarginCosineProduct(nn.Module):
                 onehot.scatter_(1, label.view(-1, 1), 1.0).to(label.device)
             else:
                 onehot = label
-            output = self.s * (cosine - onehot * self.m)
+            output = self.s * (cosine - onehot * self.m) + self.bias
         else:
             # margin is not used when label is None
             output = cosine
