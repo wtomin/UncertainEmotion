@@ -281,7 +281,18 @@ class EmotionNet(pl.LightningModule):
         'lr_scheduler': {'scheduler': scheduler, 'interval': 'step', 'name': "lr"}
         }
 
- 
+class MSE_alpha_Cov(nn.Module):
+    def __init__(self, alpha = 0.1):
+        super().__init__()
+        self.alpha = alpha
+        assert self.alpha >0, "positive alpha"
+
+    def forward(self, x, y):
+        mse_loss = F.mse_loss(x, y)
+        cov =  (x* y).mean(dim=0)
+        return mse_loss - self.alpha * cov
+    
+
 if __name__ == '__main__':
     #plot_cube_magnitude()
     from argparse import ArgumentParser
@@ -302,7 +313,8 @@ if __name__ == '__main__':
         VA_LOSS = nn.MSELoss()
     elif args.va_loss == 'mae':
         VA_LOSS = nn.L1Loss()
-
+    elif args.va_loss == 'mse_cov':
+        VA_LOSS = MSE_alpha_Cov(alpha = 0.1)
 
     model = EmotionNet(tasks, lr = args.lr, wd=args.wd)
     # model.verify_metrics_integrity()
