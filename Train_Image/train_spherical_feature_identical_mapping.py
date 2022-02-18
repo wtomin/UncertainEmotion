@@ -110,17 +110,17 @@ class EmotionNet(pl.LightningModule):
             if t == 'AU':
                 emotion_layer = nn.ModuleList(
                 [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
-                MarginCosineProduct(64, dim, s = 4, m=0)]
+                MarginCosineProduct(64, dim, s = 4, m=0, use_bias=False)]
                 )
             elif t == 'EXPR':
                 emotion_layer = nn.ModuleList(
                 [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
-                MarginCosineProduct(64, dim, s = 3.65, m=0)]
+                MarginCosineProduct(64, dim, s = 3.65, m=0, use_bias=False)]
                 )
             elif t == 'VA':
                 emotion_layer = nn.ModuleList(
                 [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
-                MarginCosineProduct(64, dim, s = 3.65, m=0)]
+                MarginCosineProduct(64, dim, s = 3.65, m=0, use_bias=False)]
                 )
             emotion_layers.append(emotion_layer)
         self.emotion_layers = nn.ModuleList(emotion_layers)
