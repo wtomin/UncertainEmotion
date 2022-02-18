@@ -308,7 +308,7 @@ if __name__ == '__main__':
     # model.verify_metrics_integrity()
     dm = DataModule(tasks,
         transform_train = train_transforms(112), transform_test = test_transforms(112), 
-        num_workers_train = 8, num_workers_test = 8, batch_size = 72,
+        num_workers_train = 8, num_workers_test = 8, batch_size = 24,
         downsamples = [4, 2, 4])
     ckp_dir = os.path.join(args.ckp_save_dir, args.exp_name)
     if not os.path.exists(ckp_dir):
