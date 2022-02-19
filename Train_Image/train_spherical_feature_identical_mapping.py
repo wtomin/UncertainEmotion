@@ -304,6 +304,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default = 1e-3)
     parser.add_argument('--wd', type=float, default=0)
     parser.add_argument('--va_loss', type=str, default = 'ccc')
+    parser.add_argument('--resume_ckp', type=str, default=None)
     args = parser.parse_args()
     tasks = ['AU', 'EXPR', 'VA']
     global VA_LOSS
@@ -331,14 +332,16 @@ if __name__ == '__main__':
     ckp_callback = ModelCheckpoint(monitor='val_metric_total_numpy', mode='max',
         dirpath = ckp_dir,
         filename = 'mobile_facenet-{epoch:02d}-{val_metric_total_numpy:.2f}',
-        save_top_k = 3)
+        save_top_k = 1,
+        save_last = True)
     tb_logger = pl_loggers.TensorBoardLogger(ckp_dir)
     trainer = Trainer(gpus=1, benchmark=True,
         default_root_dir = ckp_dir, logger = tb_logger, log_every_n_steps=100, 
         max_steps = 10e5, 
         # limit_train_batches = 0.01, 
         # limit_val_batches= 0.01, 
-        callbacks =[early_stopper, lr_monitor, ckp_callback])
+        callbacks =[early_stopper, lr_monitor, ckp_callback],
+        resume_from_checkpoint = args.resume_ckp)
 
     if args.find_best_lr:
         lr_finder = trainer.tuner.lr_find(model, datamodule = dm, 
