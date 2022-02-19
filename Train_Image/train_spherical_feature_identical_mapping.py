@@ -16,6 +16,12 @@ from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, Mode
 from PATH import PATH
 import torchmetrics
 PRESET_VARS = PATH()
+class VAD_CosineSimilarity(nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self, x, y):
+        inner_product = x[:, 0]*y[:, 0] + x[:, 1]*y[:, 1] + torch.abs(x[:, 2]*y[:, 2])
+        return -inner_product.mean()
 
 class MarginCosineProduct(nn.Module):
     def __init__(self, in_features, out_features, s = 3.65, m=0.):
@@ -110,7 +116,7 @@ class EmotionNet(pl.LightningModule):
             elif t == 'VA':
                 emotion_layer = nn.ModuleList(
                 [nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 64), nn.BatchNorm1d(64)),
-                MarginCosineProduct(64, dim, s = 3.65, m=0)]
+                nn.Linear(64, dim+1)]
                 )
             emotion_layers.append(emotion_layer)
         self.emotion_layers = nn.ModuleList(emotion_layers)
@@ -155,8 +161,10 @@ class EmotionNet(pl.LightningModule):
             spherical_feature = self.emotion_layers[i][0](x)
             if t != 'VA' and t in y.keys():
                 out_emo = self.emotion_layers[i][1](spherical_feature, y[t])
-            else:
+            elif t!='VA':
                 out_emo = self.emotion_layers[i][1](spherical_feature)
+            else:
+                out_emo = F.normalize(self.emotion_layers[i][1](spherical_feature))
             output[t] = out_emo
         return output
     def compute_loss(self, task, y_hat, y):
@@ -166,7 +174,11 @@ class EmotionNet(pl.LightningModule):
             return F.cross_entropy(y_hat, y, weight = self.EXPR_weight.to(y.device))
         else:
             y = cube2sphere(y)
-            return VA_LOSS(y_hat[..., 0], y[..., 0]) + VA_LOSS(y_hat[..., 1], y[..., 1])
+            if not isinstance(VA_LOSS, VAD_CosineSimilarity):
+                return VA_LOSS(y_hat[..., 0], y[..., 0]) + VA_LOSS(y_hat[..., 1], y[..., 1])
+            else:
+                y = torch.cat([ y, torch.sqrt(1- (y**2).sum(-1)).reshape((-1,1))], dim=-1)
+                return VA_LOSS(y_hat, y)
     def compute_metric(self, task, estimates, labels):
         if task=='AU':
             f1_metric = torchmetrics.F1(num_classes = 2, average='macro', mdmc_average='samplewise')
@@ -181,7 +193,7 @@ class EmotionNet(pl.LightningModule):
             acc = acc_metric(estimates, labels).item()
             return [f1, acc], 0.67*f1+0.33*acc
         else:
-            estimates = sphere2cube(estimates)
+            estimates = sphere2cube(estimates[:, :2])
             v_ccc = CCC_score_Torch(estimates[:,0], labels[:, 0]).item()
             a_ccc = CCC_score_Torch(estimates[:,1], labels[:, 1]).item()
             return [v_ccc, a_ccc], v_ccc+a_ccc
@@ -271,7 +283,7 @@ class EmotionNet(pl.LightningModule):
         'lr_scheduler': {'scheduler': scheduler, 'interval': 'step', 'name': "lr"}
         }
 
- 
+
 if __name__ == '__main__':
     #plot_cube_magnitude()
     from argparse import ArgumentParser
@@ -292,13 +304,15 @@ if __name__ == '__main__':
         VA_LOSS = nn.MSELoss()
     elif args.va_loss == 'mae':
         VA_LOSS = nn.L1Loss()
+    elif args.va_loss == 'vad':
+        VA_LOSS = VAD_CosineSimilarity()
 
 
     model = EmotionNet(tasks, lr = args.lr, wd=args.wd)
     # model.verify_metrics_integrity()
     dm = DataModule(tasks,
         transform_train = train_transforms(112), transform_test = test_transforms(112), 
-        num_workers_train = 8, num_workers_test = 8, batch_size = 72,
+        num_workers_train = 8, num_workers_test = 8, batch_size = 24,
         downsamples = [4, 2, 4])
     ckp_dir = os.path.join(args.ckp_save_dir, args.exp_name)
     if not os.path.exists(ckp_dir):
