@@ -177,7 +177,11 @@ class EmotionNet(pl.LightningModule):
             if not isinstance(VA_LOSS, VAD_CosineSimilarity):
                 return VA_LOSS(y_hat[..., 0], y[..., 0]) + VA_LOSS(y_hat[..., 1], y[..., 1])
             else:
-                y = torch.cat([ y, torch.sqrt(1- (y**2).sum(-1)).reshape((-1,1))], dim=-1)
+                delta = 1- (y**2).sum(-1)
+                delta = F.threshold(delta, 0, 0, inplace=True) # remove negative value close to zero
+                y = torch.cat([ y, torch.sqrt(delta).reshape((-1,1))], dim=-1)
+                # if torch.isnan(y) or torch.isinf(y):
+                #     import pdb; pdb.set_trace()
                 return VA_LOSS(y_hat, y)
     def compute_metric(self, task, estimates, labels):
         if task=='AU':
