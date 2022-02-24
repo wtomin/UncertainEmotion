@@ -21,7 +21,8 @@ class VAD_CosineSimilarity(nn.Module):
         super().__init__()
     def forward(self, x, y):
         inner_product = x[:, 0]*y[:, 0] + x[:, 1]*y[:, 1] + torch.abs(x[:, 2]*y[:, 2])
-        return -inner_product.mean()
+        mu_product = x[:, 0].mean()*y[:, 0].mean() + x[:, 1].mean()*y[:, 1].mean()
+        return -inner_product.mean() + mu_product
 
 class MarginCosineProduct(nn.Module):
     def __init__(self, in_features, out_features, s = 3.65, m=0.):
